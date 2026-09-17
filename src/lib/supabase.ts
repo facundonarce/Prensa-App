@@ -80,9 +80,6 @@ export async function signInWithGoogle() {
 
   const redirectUrl = window.location.origin;
 
-  // Use skipBrowserRedirect: true so we can guarantee the apikey query parameter is present in the redirect URL
-  // This prevents Supabase's Kong gateway from rejecting the request with:
-  // {"message":"No API key found in request","hint":"No `apikey` request header or url param was found."}
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: 'google',
     options: {
@@ -91,7 +88,6 @@ export async function signInWithGoogle() {
       queryParams: {
         access_type: 'offline',
         prompt: 'consent',
-        apikey: anonKey,
       },
     },
   });
@@ -101,13 +97,11 @@ export async function signInWithGoogle() {
   }
 
   if (data?.url) {
-    let authUrl = data.url;
-    // Guarantee apikey query parameter is present in the target authorization URL
-    if (!authUrl.includes('apikey=')) {
-      const sep = authUrl.includes('?') ? '&' : '?';
-      authUrl = `${authUrl}${sep}apikey=${encodeURIComponent(anonKey)}`;
-    }
-    window.location.assign(authUrl);
+    // Usamos la API de URL para garantizar que el apikey quede en el lugar
+    // correcto de la query string, sin depender de manipular el string a mano.
+    const authUrl = new URL(data.url);
+    authUrl.searchParams.set('apikey', anonKey);
+    window.location.assign(authUrl.toString());
     return data;
   }
 
