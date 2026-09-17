@@ -9,7 +9,7 @@ import {
   LogOut,
   ShieldCheck,
 } from 'lucide-react';
-import { signInWithGoogle } from '../lib/supabase';
+import { signInWithGoogle, getSavedConfig } from '../lib/supabase';
 
 interface LoginScreenProps {
   hasConfig: boolean;
@@ -28,8 +28,9 @@ export function LoginScreen({
   const [authError, setAuthError] = useState<string | null>(null);
 
   const handleGoogleSignIn = async () => {
-    if (!hasConfig) {
-      setAuthError('Antes de iniciar sesión con Google debes configurar la URL y Anon Key de Supabase.');
+    const config = getSavedConfig();
+    if (!config.url || !config.anonKey) {
+      setAuthError('Falta configurar la URL y la Anon Key de Supabase para poder iniciar sesión.');
       onOpenConfig();
       return;
     }
@@ -40,7 +41,12 @@ export function LoginScreen({
       await signInWithGoogle();
     } catch (err: unknown) {
       console.error(err);
-      const msg = err instanceof Error ? err.message : 'Error al conectar con Google OAuth';
+      let msg = 'Error al conectar con Google OAuth';
+      if (err instanceof Error) {
+        msg = err.message;
+      } else if (typeof err === 'object' && err !== null && 'message' in err) {
+        msg = String((err as any).message);
+      }
       setAuthError(msg);
       setIsSigningIn(false);
     }
@@ -168,9 +174,21 @@ export function LoginScreen({
             </button>
 
             {authError && (
-              <div className="p-3 rounded-xl bg-[#FEF2F2] border border-[#FECACA] flex items-start gap-2.5 text-xs text-[#DC2626]">
-                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                <span>{authError}</span>
+              <div className="p-3.5 rounded-2xl bg-[#FEF2F2] border border-[#FECACA] space-y-2 text-xs text-[#DC2626] animate-in fade-in">
+                <div className="flex items-start gap-2.5">
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span className="leading-snug">{authError}</span>
+                </div>
+                <div className="pt-1">
+                  <button
+                    type="button"
+                    onClick={onOpenConfig}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-[#FECACA] text-[#DC2626] hover:bg-[#FEF2F2] font-semibold text-[11px] shadow-2xs transition cursor-pointer"
+                  >
+                    <Key className="w-3 h-3" />
+                    <span>Verificar credenciales de Supabase</span>
+                  </button>
+                </div>
               </div>
             )}
           </div>

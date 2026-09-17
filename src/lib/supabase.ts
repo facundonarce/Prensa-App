@@ -10,20 +10,27 @@ export function getSavedConfig(): { url: string; anonKey: string } {
     const savedUrl = localStorage.getItem('carestino_supabase_url');
     const savedKey = localStorage.getItem('carestino_supabase_anon_key');
     return {
-      url: savedUrl || envUrl,
-      anonKey: savedKey || envAnonKey,
+      url: (savedUrl || envUrl || '').trim(),
+      anonKey: (savedKey || envAnonKey || '').trim(),
     };
   } catch {
-    return { url: envUrl, anonKey: envAnonKey };
+    return { url: (envUrl || '').trim(), anonKey: (envAnonKey || '').trim() };
   }
 }
 
 export function saveConfig(url: string, anonKey: string) {
   try {
-    if (url) localStorage.setItem('carestino_supabase_url', url.trim());
+    cachedClient = null;
+    lastUsedUrl = '';
+    lastUsedKey = '';
+
+    const cleanUrl = url ? url.trim().replace(/\/+$/, '') : '';
+    const cleanKey = anonKey ? anonKey.trim() : '';
+
+    if (cleanUrl) localStorage.setItem('carestino_supabase_url', cleanUrl);
     else localStorage.removeItem('carestino_supabase_url');
 
-    if (anonKey) localStorage.setItem('carestino_supabase_anon_key', anonKey.trim());
+    if (cleanKey) localStorage.setItem('carestino_supabase_anon_key', cleanKey);
     else localStorage.removeItem('carestino_supabase_anon_key');
   } catch (e) {
     console.error('Error saving supabase config', e);
@@ -65,25 +72,46 @@ export function getSupabase(): SupabaseClient | null {
  * Trigger Google OAuth sign-in via Supabase
  */
 export async function signInWithGoogle() {
+  const { url, anonKey } = getSavedConfig();
   const supabase = getSupabase();
-  if (!supabase) {
-    throw new Error('Supabase no está configurado. Por favor ingresá la URL y Anon Key.');
+  if (!supabase || !url || !anonKey) {
+    throw new Error('Supabase no está configurado. Por favor ingresá la URL del proyecto y la Anon Public Key.');
   }
 
   const redirectUrl = window.location.origin;
+
+  // Use skipBrowserRedirect: true so we can guarantee the apikey query parameter is present in the redirect URL
+  // This prevents Supabase's Kong gateway from rejecting the request with:
+  // {"message":"No API key found in request","hint":"No `apikey` request header or url param was found."}
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: 'google',
     options: {
       redirectTo: redirectUrl,
+      skipBrowserRedirect: true,
       queryParams: {
         access_type: 'offline',
         prompt: 'consent',
+        apikey: anonKey,
       },
     },
   });
 
-  if (error) throw error;
-  return data;
+  if (error) {
+    throw error;
+  }
+
+  if (data?.url) {
+    let authUrl = data.url;
+    // Guarantee apikey query parameter is present in the target authorization URL
+    if (!authUrl.includes('apikey=')) {
+      const sep = authUrl.includes('?') ? '&' : '?';
+      authUrl = `${authUrl}${sep}apikey=${encodeURIComponent(anonKey)}`;
+    }
+    window.location.assign(authUrl);
+    return data;
+  }
+
+  throw new Error('No se pudo generar la URL de autorización de Google.');
 }
 
 /**
