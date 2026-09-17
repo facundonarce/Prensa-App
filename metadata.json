@@ -1,0 +1,6 @@
+{
+  "name": "Carestino Prensa",
+  "description": "Sistema de gestión de acuerdos con influencers, pedidos de productos y reportes de contenido para Carestino.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

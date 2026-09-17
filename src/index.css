@@ -1,0 +1,52 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --brand: #F15A24;
+    --brand-active: #FFF2ED;
+    --bg-app: #FBFBFC;
+    --border-universal: #E7E7EA;
+    --text-main: #1F2226;
+    --text-secondary: #4A4F57;
+    --text-muted: #8A8F98;
+  }
+
+  body {
+    background-color: #FBFBFC;
+    color: #1F2226;
+    font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+/* Carestino BI utility tokens */
+.bg-app { background-color: #FBFBFC; }
+.bg-brand-active { background-color: #FFF2ED; }
+.text-brand { color: #F15A24; }
+.bg-brand { background-color: #F15A24; }
+.border-universal { border-color: #E7E7EA; }
+.text-main { color: #1F2226; }
+.text-secondary { color: #4A4F57; }
+.text-muted-custom { color: #8A8F98; }
+
+/* Numeric data alignment rule */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Custom scrollbars for data density */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #F4F4F6;
+}
+::-webkit-scrollbar-thumb {
+  background: #D1D5DB;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #9CA3AF;
+}
