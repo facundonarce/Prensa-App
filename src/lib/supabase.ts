@@ -87,6 +87,39 @@ export async function signInWithGoogle() {
 }
 
 /**
+ * Get active session
+ */
+export async function getAuthSession() {
+  const supabase = getSupabase();
+  if (!supabase) return null;
+  try {
+    const { data, error } = await supabase.auth.getSession();
+    if (error) {
+      console.warn('Error fetching Supabase session:', error);
+      return null;
+    }
+    return data.session;
+  } catch (err) {
+    console.warn('Failed to retrieve auth session:', err);
+    return null;
+  }
+}
+
+/**
+ * Listen to auth state changes (login, logout, token refresh)
+ */
+export function onAuthStateChange(callback: (event: string, session: any) => void) {
+  const supabase = getSupabase();
+  if (!supabase) return () => {};
+  const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    callback(event, session);
+  });
+  return () => {
+    subscription.unsubscribe();
+  };
+}
+
+/**
  * Sign out
  */
 export async function signOut() {

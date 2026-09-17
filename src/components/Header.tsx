@@ -9,6 +9,7 @@ import {
   Target,
   Server,
   DollarSign,
+  LogOut,
 } from 'lucide-react';
 import { RolUsuario, Usuario } from '../types';
 
@@ -18,6 +19,7 @@ interface HeaderProps {
   onRefreshData: () => void;
   hasConfig: boolean;
   currentUser: Usuario | null;
+  onSignOut?: () => void;
 }
 
 export function Header({
@@ -26,6 +28,7 @@ export function Header({
   onRefreshData,
   hasConfig,
   currentUser,
+  onSignOut,
 }: HeaderProps) {
   const getModuleInfo = () => {
     switch (activeModule) {
@@ -145,6 +148,17 @@ export function Header({
             <span>{hasConfig ? 'Supabase Conectado' : 'Configurar Supabase'}</span>
             <Settings className="w-3.5 h-3.5" />
           </button>
+
+          {onSignOut && (
+            <button
+              onClick={onSignOut}
+              title="Cerrar sesión"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-white border border-[#E7E7EA] hover:bg-[#FEF2F2] text-xs font-medium text-[#4A4F57] hover:text-[#EF4444] hover:border-[#FECACA] shadow-2xs transition"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span className="hidden md:inline">Cerrar sesión</span>
+            </button>
+          )}
         </div>
       </div>
     </header>

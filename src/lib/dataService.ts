@@ -92,6 +92,13 @@ export const INITIAL_ESCALONES: EscalonesSeguidores[] = [
 
 export const INITIAL_USUARIOS: Usuario[] = [
   {
+    id: 'a0000000-0000-0000-0000-000000000001',
+    email: 'reporting@carestino.com',
+    nombre: 'Reporting Carestino (Admin)',
+    rol: 'admin_general',
+    activo: true,
+  },
+  {
     id: 'f47ac10b-58cc-4372-a567-0e02b2c3d479',
     email: 'joaquin.mendez@carestino.com',
     nombre: 'Joaquín Méndez',

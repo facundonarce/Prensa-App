@@ -12,6 +12,7 @@ import { FormularioReporte } from './components/FormularioReporte';
 import { ReportesList } from './components/ReportesList';
 import { SetupInstructions } from './components/SetupInstructions';
 import { AuthCard } from './components/AuthCard';
+import { LoginScreen } from './components/LoginScreen';
 import {
   DataService,
   INITIAL_PAISES,
@@ -27,7 +28,7 @@ import {
   INITIAL_PEDIDOS,
   INITIAL_REPORTES,
 } from './lib/dataService';
-import { getSupabase, getSavedConfig } from './lib/supabase';
+import { getSupabase, getSavedConfig, getAuthSession, onAuthStateChange, signOut } from './lib/supabase';
 import {
   Usuario,
   RolUsuario,
@@ -54,6 +55,7 @@ import {
   Copy,
   Layers,
   Sparkles,
+  Loader2,
 } from 'lucide-react';
 
 export default function App() {
@@ -68,9 +70,10 @@ export default function App() {
   const [hasConfig, setHasConfig] = useState(false);
 
   // Auth & Roles
-  const [currentUser, setCurrentUser] = useState<Usuario | null>(INITIAL_USUARIOS[0]); // Default to admin_general
-  const [isSimulated, setIsSimulated] = useState(true);
-  const [isLoadingAuth, setIsLoadingAuth] = useState(false);
+  const [currentUser, setCurrentUser] = useState<Usuario | null>(null);
+  const [unauthorizedUser, setUnauthorizedUser] = useState<{ email: string; reason?: string } | null>(null);
+  const [isSimulated, setIsSimulated] = useState(false);
+  const [isLoadingAuth, setIsLoadingAuth] = useState(true);
 
   // Data states
   const [usuarios, setUsuarios] = useState<Usuario[]>(INITIAL_USUARIOS);
@@ -126,39 +129,159 @@ export default function App() {
     }
   }, []);
 
+  // Verify Google session and validate access against padrón de usuarios
+  const checkAuthSession = useCallback(async () => {
+    setIsLoadingAuth(true);
+    try {
+      const session = await getAuthSession();
+      if (session?.user?.email) {
+        const email = session.user.email.toLowerCase();
+        const usersList = await DataService.getUsuarios();
+        let match = usersList.find((u) => u.email.toLowerCase() === email);
+
+        if (!match) {
+          const supabase = getSupabase();
+          if (supabase) {
+            const { data } = await supabase.from('usuarios').select('*').ilike('email', email).maybeSingle();
+            if (data) {
+              match = data;
+            }
+          }
+        }
+
+        if (match) {
+          if (!match.activo) {
+            setCurrentUser(null);
+            setUnauthorizedUser({ email, reason: 'inactive' });
+          } else if (!match.rol) {
+            setCurrentUser(null);
+            setUnauthorizedUser({ email, reason: 'no_role' });
+          } else {
+            setCurrentUser(match);
+            setUnauthorizedUser(null);
+            setIsSimulated(false);
+          }
+        } else {
+          setCurrentUser(null);
+          setUnauthorizedUser({ email, reason: 'not_found' });
+        }
+      } else {
+        // Look for saved session in localStorage
+        const saved = localStorage.getItem('carestino_session_user');
+        if (saved) {
+          try {
+            const parsed = JSON.parse(saved);
+            if (parsed?.email) {
+              const usersList = await DataService.getUsuarios();
+              const match = usersList.find((u) => u.email.toLowerCase() === parsed.email.toLowerCase());
+              if (match && match.activo && match.rol) {
+                setCurrentUser(match);
+                setIsSimulated(true);
+                setUnauthorizedUser(null);
+              }
+            }
+          } catch {}
+        }
+      }
+    } catch (err) {
+      console.warn('Error checking session:', err);
+    } finally {
+      setIsLoadingAuth(false);
+    }
+  }, []);
+
   useEffect(() => {
     refreshConfigStatus();
     loadData();
-  }, [refreshConfigStatus, loadData]);
+    checkAuthSession();
 
-  // Handle Role Simulation
+    const unsubscribe = onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
+        if (session?.user?.email) {
+          await checkAuthSession();
+        }
+      } else if (event === 'SIGNED_OUT') {
+        setCurrentUser(null);
+        setUnauthorizedUser(null);
+        setIsSimulated(false);
+        localStorage.removeItem('carestino_session_user');
+      }
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [refreshConfigStatus, loadData, checkAuthSession]);
+
+  // Sign out
+  const handleSignOut = async () => {
+    try {
+      await signOut();
+    } catch (e) {
+      console.error(e);
+    }
+    setCurrentUser(null);
+    setUnauthorizedUser(null);
+    setIsSimulated(false);
+    localStorage.removeItem('carestino_session_user');
+  };
+
+  // Simulate login for testing
+  const handleSimulateLogin = (user: Usuario) => {
+    if (!user.activo || !user.rol) {
+      setCurrentUser(null);
+      setUnauthorizedUser({
+        email: user.email,
+        reason: !user.activo ? 'inactive' : 'no_role',
+      });
+      localStorage.removeItem('carestino_session_user');
+      return;
+    }
+    setCurrentUser(user);
+    setUnauthorizedUser(null);
+    setIsSimulated(true);
+    localStorage.setItem('carestino_session_user', JSON.stringify(user));
+  };
+
+  // Handle Role Simulation from sidebar
   const handleSimulateRole = (role: RolUsuario | 'sin_rol' | null) => {
     if (role === null) {
       setIsSimulated(false);
+      localStorage.removeItem('carestino_session_user');
+      checkAuthSession();
       return;
     }
     setIsSimulated(true);
 
     if (role === 'sin_rol') {
-      setCurrentUser({
-        id: 'user-sin-rol-guest',
+      setCurrentUser(null);
+      setUnauthorizedUser({
         email: 'nuevo.postulante@carestino.com',
-        nombre: 'Nuevo Postulante (Sin Asignar)',
-        rol: null as any,
-        activo: false,
+        reason: 'no_role',
       });
+      localStorage.removeItem('carestino_session_user');
     } else {
-      const match = usuarios.find((u) => u.rol === role);
+      const match = usuarios.find((u) => u.rol === role && u.activo);
       if (match) {
         setCurrentUser(match);
+        setUnauthorizedUser(null);
+        localStorage.setItem('carestino_session_user', JSON.stringify(match));
       } else {
-        setCurrentUser({
+        const simUser: Usuario = {
           id: `sim-${role}`,
           email: `${role}@carestino.com`,
-          nombre: role === 'admin_general' ? 'Joaquín Méndez (Admin General)' : role === 'admin_prensa' ? 'Lucía Fernández (Líder Prensa)' : 'Santiago Rossi (Analista)',
+          nombre:
+            role === 'admin_general'
+              ? 'Joaquín Méndez (Admin General)'
+              : role === 'admin_prensa'
+              ? 'Lucía Fernández (Líder Prensa)'
+              : 'Santiago Rossi (Analista)',
           rol: role,
           activo: true,
-        });
+        };
+        setCurrentUser(simUser);
+        setUnauthorizedUser(null);
+        localStorage.setItem('carestino_session_user', JSON.stringify(simUser));
       }
     }
   };
@@ -292,6 +415,64 @@ export default function App() {
   // Total dataset count
   const datasetCount = acuerdos.length + productos.length + usuarios.length;
 
+  // 1. Loading authentication state
+  if (isLoadingAuth) {
+    return (
+      <div className="min-h-screen bg-[#FBFBFC] flex flex-col items-center justify-center p-4">
+        <div className="text-center space-y-4">
+          <div className="w-16 h-16 rounded-3xl bg-[#FFF2ED] text-[#F15A24] flex items-center justify-center mx-auto text-2xl font-black shadow-xs animate-pulse">
+            C
+          </div>
+          <div className="space-y-1">
+            <h2 className="text-base font-bold text-[#1F2226]">Carestino Prensa & Marketing</h2>
+            <p className="text-xs text-[#8A8F98] flex items-center justify-center gap-2">
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-[#F15A24]" />
+              <span>Verificando credenciales de acceso...</span>
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // 2. Strict Auth Gate: Must have valid session, be active, and have a role
+  const isUnauthorized = Boolean(
+    unauthorizedUser || (currentUser && (!currentUser.rol || !currentUser.activo))
+  );
+
+  if (!currentUser || isUnauthorized) {
+    return (
+      <>
+        <LoginScreen
+          hasConfig={hasConfig}
+          onOpenConfig={() => setIsConfigOpen(true)}
+          unauthorizedUser={
+            unauthorizedUser ||
+            (currentUser && (!currentUser.rol || !currentUser.activo)
+              ? {
+                  email: currentUser.email,
+                  reason: !currentUser.activo ? 'inactive' : 'no_role',
+                }
+              : null)
+          }
+          onSignOut={handleSignOut}
+        />
+        <ConfigModal
+          isOpen={isConfigOpen}
+          onClose={() => {
+            setIsConfigOpen(false);
+            refreshConfigStatus();
+            loadData();
+          }}
+          onSaved={() => {
+            refreshConfigStatus();
+            loadData();
+          }}
+        />
+      </>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#FBFBFC] text-[#1F2226] font-sans flex antialiased">
       {/* 1. Sidebar (Fixed left w-64) */}
@@ -309,6 +490,7 @@ export default function App() {
         onRefreshData={loadData}
         onSimulateRole={handleSimulateRole}
         isSimulated={isSimulated}
+        onSignOut={handleSignOut}
       />
 
       {/* 2. Main Content Wrapper */}
@@ -320,44 +502,13 @@ export default function App() {
           onRefreshData={loadData}
           hasConfig={hasConfig}
           currentUser={currentUser}
+          onSignOut={handleSignOut}
         />
 
         {/* Body View */}
         <main className="flex-1 p-6 md:p-8 space-y-6">
-          {/* User Blocked Notice if role is null */}
-          {currentUser && currentUser.rol === null ? (
-            <div className="bg-white rounded-2xl border border-[#FECACA] p-6 shadow-xs max-w-2xl mx-auto text-center space-y-4 my-8">
-              <div className="w-12 h-12 rounded-full bg-[#FEF2F2] text-[#EF4444] flex items-center justify-center mx-auto">
-                <Lock className="w-6 h-6" />
-              </div>
-              <div>
-                <h2 className="text-base font-bold text-[#1F2226]">
-                  Acceso Pendiente de Autorización (RLS)
-                </h2>
-                <p className="text-xs text-[#4A4F57] mt-1.5 leading-relaxed max-w-lg mx-auto">
-                  Tu usuario (<code>{currentUser.email}</code>) se ha autenticado con éxito, pero aún no
-                  posee un rol asignado en la tabla <code>usuarios</code> de la base de datos de Carestino.
-                </p>
-                <div className="mt-3 p-3 bg-[#F4F4F6] rounded-xl text-[11px] text-[#4A4F57] max-w-md mx-auto">
-                  💡 <em>Regla de Negocio:</em> El <strong>admin_general</strong> debe darte de alta y
-                  asignarte el rol de <code>analista</code> o <code>admin_prensa</code> para desbloquear la
-                  plataforma.
-                </div>
-              </div>
-
-              <div className="pt-2">
-                <button
-                  onClick={() => handleSimulateRole('admin_general')}
-                  className="px-4 py-2 bg-[#F15A24] hover:bg-[#D94815] text-white text-xs font-bold rounded-xl shadow-2xs transition"
-                >
-                  Simular como Admin General para Habilitar
-                </button>
-              </div>
-            </div>
-          ) : (
-            <>
-              {/* Module: Acuerdos */}
-              {activeModule === 'acuerdos' && (
+          {/* Module: Acuerdos */}
+          {activeModule === 'acuerdos' && (
                 <>
                   {isCreatingAcuerdo ? (
                     <FormularioAcuerdo
@@ -556,8 +707,6 @@ export default function App() {
                   </div>
                 </div>
               )}
-            </>
-          )}
         </main>
       </div>
 

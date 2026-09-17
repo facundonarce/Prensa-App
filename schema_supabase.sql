@@ -24,12 +24,13 @@ END $$;
 -- 3. TABLAS DE CONFIGURACIÓN Y CATÁLOGOS (LISTAS DE VALIDACIÓN)
 
 -- 3.1 Usuarios del sistema (sincronizados con auth.users de Supabase)
+-- Regla de Negocio: Solo usuarios activos y con rol asignado por el admin pueden operar.
 CREATE TABLE IF NOT EXISTS public.usuarios (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     email TEXT NOT NULL UNIQUE,
     nombre TEXT,
-    rol rol_usuario NOT NULL DEFAULT 'analista',
-    activo BOOLEAN NOT NULL DEFAULT true,
+    rol rol_usuario NULL,
+    activo BOOLEAN NOT NULL DEFAULT false,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -347,21 +348,27 @@ FOR EACH ROW
 EXECUTE FUNCTION public.fn_restaurar_remanente_pedido();
 
 
--- 8.4 Sincronización automática de usuarios Google Auth con public.usuarios
+-- 8.4 Sincronización de usuarios Google Auth con public.usuarios
+-- Regla de Seguridad: Si el usuario ya fue pre-cargado por el Administrador, se vincula y preserva su rol.
+-- Si es un correo desconocido, se registra sin rol y deshabilitado (activo = false) para no otorgar acceso no autorizado.
 CREATE OR REPLACE FUNCTION public.handle_new_auth_user()
 RETURNS TRIGGER AS $$
 BEGIN
-    INSERT INTO public.usuarios (id, email, nombre, rol, activo)
-    VALUES (
-        NEW.id,
-        NEW.email,
-        COALESCE(NEW.raw_user_meta_data->>'full_name', NEW.raw_user_meta_data->>'name', split_part(NEW.email, '@', 1)),
-        'analista',
-        true
-    )
-    ON CONFLICT (email) DO UPDATE
-    SET id = EXCLUDED.id,
-        nombre = COALESCE(EXCLUDED.nombre, public.usuarios.nombre);
+    IF EXISTS (SELECT 1 FROM public.usuarios WHERE email = NEW.email) THEN
+        UPDATE public.usuarios
+        SET id = NEW.id,
+            nombre = COALESCE(public.usuarios.nombre, NEW.raw_user_meta_data->>'full_name', NEW.raw_user_meta_data->>'name', split_part(NEW.email, '@', 1))
+        WHERE email = NEW.email;
+    ELSE
+        INSERT INTO public.usuarios (id, email, nombre, rol, activo)
+        VALUES (
+            NEW.id,
+            NEW.email,
+            COALESCE(NEW.raw_user_meta_data->>'full_name', NEW.raw_user_meta_data->>'name', split_part(NEW.email, '@', 1)),
+            NULL,
+            false
+        );
+    END IF;
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
@@ -521,6 +528,16 @@ INSERT INTO public.escalones_seguidores (id, seguidores_hasta, usd_mes, comentar
     (10, 3500000, 1200.00, 'Hasta 3.5M Seguidores'),
     (11, 100000000, 1500.00, 'Hasta 100M Seguidores')
 ON CONFLICT (seguidores_hasta) DO UPDATE SET usd_mes = EXCLUDED.usd_mes, comentario = EXCLUDED.comentario;
+
+-- 10.9 Usuarios Autorizados con Acceso Inicial (Padrón Carestino)
+INSERT INTO public.usuarios (id, email, nombre, rol, activo) VALUES
+    ('a0000000-0000-0000-0000-000000000001', 'reporting@carestino.com', 'Reporting Carestino (Admin)', 'admin_general', true),
+    ('f47ac10b-58cc-4372-a567-0e02b2c3d479', 'joaquin.mendez@carestino.com', 'Joaquín Méndez (Admin General)', 'admin_general', true),
+    ('b1234567-89ab-cdef-0123-456789abcdef', 'lucia.fernandez@carestino.com', 'Lucía Fernández (Líder Prensa)', 'admin_prensa', true),
+    ('c2345678-9abc-def0-1234-56789abcdef0', 'santiago.rossi@carestino.com', 'Santiago Rossi (Analista Cono Sur)', 'analista', true),
+    ('d3456789-abcd-ef01-2345-6789abcdef01', 'mariana.lopez@carestino.com', 'Mariana López (Analista Andina)', 'analista', true)
+ON CONFLICT (email) DO UPDATE 
+SET rol = EXCLUDED.rol, activo = EXCLUDED.activo, nombre = COALESCE(public.usuarios.nombre, EXCLUDED.nombre);
 
 -- Ajustar las secuencias de las tablas con IDs seriales
 SELECT setval('public.paises_id_seq', (SELECT MAX(id) FROM public.paises));

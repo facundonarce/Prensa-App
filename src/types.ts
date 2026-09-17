@@ -8,7 +8,7 @@ export interface Usuario {
   id: string; // uuid references auth.users(id)
   email: string;
   nombre: string | null;
-  rol: RolUsuario;
+  rol: RolUsuario | null;
   activo?: boolean;
   created_at?: string;
 }

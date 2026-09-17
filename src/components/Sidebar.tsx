@@ -24,6 +24,7 @@ interface SidebarProps {
   onRefreshData: () => void;
   onSimulateRole: (role: RolUsuario | 'sin_rol' | null) => void;
   isSimulated: boolean;
+  onSignOut?: () => void;
 }
 
 export function Sidebar({
@@ -35,6 +36,7 @@ export function Sidebar({
   onRefreshData,
   onSimulateRole,
   isSimulated,
+  onSignOut,
 }: SidebarProps) {
   const [showRoleMenu, setShowRoleMenu] = useState(false);
   const role: RolUsuario | null = currentUser?.rol || null;
@@ -352,6 +354,18 @@ export function Sidebar({
                   className="w-full text-left px-2.5 py-1 border-t border-[#E7E7EA] text-[11px] text-[#8A8F98] hover:text-[#1F2226]"
                 >
                   Restablecer sesión real
+                </button>
+              )}
+              {onSignOut && (
+                <button
+                  onClick={() => {
+                    setShowRoleMenu(false);
+                    onSignOut();
+                  }}
+                  className="w-full flex items-center gap-1.5 px-2.5 py-1.5 border-t border-[#E7E7EA] text-xs font-semibold text-[#EF4444] hover:bg-[#FEF2F2] rounded-lg transition"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  <span>Cerrar sesión</span>
                 </button>
               )}
             </div>

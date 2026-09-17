@@ -46,7 +46,7 @@ export function AdminUsuarios({ usuarios, currentUser, onSaveUsuario }: AdminUsu
     setEditingUser(user);
     setEmail(user.email);
     setNombre(user.nombre || '');
-    setRol(user.rol);
+    setRol(user.rol || 'analista');
     setActivo(user.activo ?? true);
     setIsModalOpen(true);
   };
@@ -74,7 +74,14 @@ export function AdminUsuarios({ usuarios, currentUser, onSaveUsuario }: AdminUsu
     }
   };
 
-  const getRolBadge = (r: RolUsuario) => {
+  const getRolBadge = (r: RolUsuario | null) => {
+    if (!r) {
+      return (
+        <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide bg-[#F4F4F6] text-[#8A8F98] border border-[#E7E7EA]">
+          Sin Rol (Bloqueado)
+        </span>
+      );
+    }
     switch (r) {
       case 'admin_general':
         return (
