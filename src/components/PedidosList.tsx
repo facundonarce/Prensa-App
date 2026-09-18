@@ -11,6 +11,8 @@ import {
   Eye,
   AlertCircle,
   FileText,
+  FileSpreadsheet,
+  Pencil,
 } from 'lucide-react';
 import { Pedido, Acuerdo, Producto, Tienda, Usuario } from '../types';
 
@@ -22,7 +24,9 @@ interface PedidosListProps {
   usuarios: Usuario[];
   currentUser: Usuario;
   onNewPedido: () => void;
+  onOpenImport?: () => void;
   onDeletePedido: (id: number) => Promise<void>;
+  onEditPedido?: (pedido: Pedido) => void;
 }
 
 export function PedidosList({
@@ -33,11 +37,15 @@ export function PedidosList({
   usuarios,
   currentUser,
   onNewPedido,
+  onOpenImport,
   onDeletePedido,
+  onEditPedido,
 }: PedidosListProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterTipo, setFilterTipo] = useState<string>('all');
   const [selectedPedido, setSelectedPedido] = useState<Pedido | null>(null);
+  const [pedidoToDelete, setPedidoToDelete] = useState<Pedido | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Filtered list
   const filteredPedidos = useMemo(() => {
@@ -92,14 +100,28 @@ export function PedidosList({
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={onNewPedido}
-          className="inline-flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold text-white bg-[#F15A24] hover:bg-[#D94815] rounded-xl transition shadow-xs self-start sm:self-auto"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Nuevo Pedido (Formulario 2)</span>
-        </button>
+        <div className="flex items-center gap-2 self-start sm:self-auto">
+          {onOpenImport && (
+            <button
+              type="button"
+              onClick={onOpenImport}
+              className="inline-flex items-center justify-center gap-2 px-3.5 py-2.5 text-xs font-bold text-slate-700 bg-white hover:bg-slate-50 border border-[#E7E7EA] rounded-xl transition shadow-2xs cursor-pointer"
+              title="Descargar modelo y cargar pedidos desde Excel o CSV"
+            >
+              <FileSpreadsheet className="w-4 h-4 text-[#F15A24]" />
+              <span>Importar Excel / CSV</span>
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={onNewPedido}
+            className="inline-flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold text-white bg-[#F15A24] hover:bg-[#D94815] rounded-xl transition shadow-xs cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Nuevo Pedido (Formulario 2)</span>
+          </button>
+        </div>
       </div>
 
       {/* KPI Cards */}
@@ -276,25 +298,33 @@ export function PedidosList({
                         {creador ? creador.nombre || creador.email : 'Sistema'}
                       </td>
                       <td className="py-3 px-4 text-right">
-                        <div className="inline-flex items-center gap-1">
+                        <div className="inline-flex items-center gap-1 justify-end">
                           <button
                             type="button"
                             onClick={() => setSelectedPedido(ped)}
-                            className="p-1.5 text-[#4A4F57] hover:text-[#1F2226] hover:bg-[#F4F4F6] rounded-lg transition"
+                            className="p-1.5 text-[#4A4F57] hover:text-[#1F2226] hover:bg-[#F4F4F6] rounded-lg transition cursor-pointer"
                             title="Ver detalle del pedido"
                           >
                             <Eye className="w-4 h-4" />
                           </button>
-                          {currentUser.rol === 'admin_general' && (
+                          {onEditPedido && (
                             <button
                               type="button"
-                              onClick={() => handleDelete(ped.id)}
-                              className="p-1.5 text-[#8A8F98] hover:text-[#EF4444] hover:bg-[#FEF2F2] rounded-lg transition"
-                              title="Eliminar pedido (solo admin_general)"
+                              onClick={() => onEditPedido(ped)}
+                              className="p-1.5 text-[#4A4F57] hover:text-[#F15A24] hover:bg-[#FFF2ED] rounded-lg transition cursor-pointer"
+                              title="Modificar pedido"
                             >
-                              <Trash2 className="w-4 h-4" />
+                              <Pencil className="w-4 h-4" />
                             </button>
                           )}
+                          <button
+                            type="button"
+                            onClick={() => setPedidoToDelete(ped)}
+                            className="p-1.5 text-[#8A8F98] hover:text-[#EF4444] hover:bg-[#FEF2F2] rounded-lg transition cursor-pointer"
+                            title="Eliminar pedido"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -382,13 +412,94 @@ export function PedidosList({
               )}
             </div>
 
-            <div className="flex justify-end pt-2">
+            <div className="flex items-center justify-between pt-3 border-t border-[#E7E7EA]">
+              <div className="flex items-center gap-2">
+                {onEditPedido && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const ped = selectedPedido;
+                      setSelectedPedido(null);
+                      onEditPedido(ped);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-[#4A4F57] hover:text-[#F15A24] bg-white hover:bg-[#FFF2ED] border border-[#E7E7EA] rounded-xl transition cursor-pointer"
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                    <span>Modificar</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const ped = selectedPedido;
+                    setSelectedPedido(null);
+                    setPedidoToDelete(ped);
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-[#EF4444] bg-[#FEF2F2] hover:bg-[#FEE2E2] border border-[#FECACA] rounded-xl transition cursor-pointer"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Eliminar</span>
+                </button>
+              </div>
+
               <button
                 type="button"
                 onClick={() => setSelectedPedido(null)}
-                className="px-4 py-2 text-xs font-semibold text-[#1F2226] bg-[#F4F4F6] hover:bg-[#E7E7EA] rounded-xl transition"
+                className="px-4 py-1.5 text-xs font-semibold text-[#1F2226] bg-[#F4F4F6] hover:bg-[#E7E7EA] rounded-xl transition cursor-pointer"
               >
                 Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation Dialog for Deleting Pedido */}
+      {pedidoToDelete && (
+        <div className="fixed inset-0 z-50 bg-[#1F2226]/40 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-[#E7E7EA] shadow-xl max-w-md w-full p-6 space-y-4">
+            <div className="flex items-center gap-3 text-[#EF4444]">
+              <div className="w-10 h-10 rounded-full bg-[#FEF2F2] border border-[#FECACA] flex items-center justify-center shrink-0">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-[#1F2226]">¿Eliminar Pedido #{pedidoToDelete.id}?</h3>
+                <p className="text-xs text-[#8A8F98]">Acuerdo vinculado: #{pedidoToDelete.acuerdo_id}</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-[#4A4F57] leading-relaxed">
+              ¿Estás seguro de que deseas eliminar este pedido? Los productos despachados se reintegrarán al saldo disponible del contrato de forma automática.
+            </p>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#E7E7EA]">
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={() => setPedidoToDelete(null)}
+                className="px-4 py-2 text-xs font-semibold text-[#4A4F57] hover:bg-[#F4F4F6] rounded-xl transition cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={async () => {
+                  if (!pedidoToDelete) return;
+                  try {
+                    setIsDeleting(true);
+                    await onDeletePedido(pedidoToDelete.id);
+                    setPedidoToDelete(null);
+                  } catch (err: any) {
+                    alert(err?.message || 'Error al eliminar el pedido');
+                  } finally {
+                    setIsDeleting(false);
+                  }
+                }}
+                className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-[#EF4444] hover:bg-[#DC2626] rounded-xl shadow-2xs transition disabled:opacity-50 cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>{isDeleting ? 'Eliminando...' : 'Sí, eliminar pedido'}</span>
               </button>
             </div>
           </div>

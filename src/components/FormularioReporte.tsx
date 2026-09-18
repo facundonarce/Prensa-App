@@ -38,7 +38,8 @@ interface FormularioReporteProps {
   usuarios: Usuario[];
   currentUser: Usuario;
   initialAcuerdoId?: number;
-  onSaveReporte: (reporte: Omit<Reporte, 'id' | 'created_at'>) => Promise<void>;
+  reporteToEdit?: Reporte | null;
+  onSaveReporte: (reporte: Omit<Reporte, 'id' | 'created_at'> & { id?: number }) => Promise<void>;
   onCancel: () => void;
 }
 
@@ -56,12 +57,13 @@ export function FormularioReporte({
   usuarios,
   currentUser,
   initialAcuerdoId,
+  reporteToEdit,
   onSaveReporte,
   onCancel,
 }: FormularioReporteProps) {
   // Select Agreement
   const [selectedAcuerdoId, setSelectedAcuerdoId] = useState<number>(
-    initialAcuerdoId || (acuerdos.length > 0 ? acuerdos[0].id : 0)
+    reporteToEdit ? reporteToEdit.acuerdo_id : (initialAcuerdoId || (acuerdos.length > 0 ? acuerdos[0].id : 0))
   );
 
   const selectedAcuerdo = useMemo(() => {
@@ -75,8 +77,11 @@ export function FormularioReporte({
   }, [usuarios, selectedAcuerdo]);
 
   // Form Basic Fields
-  const [fecha, setFecha] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [fecha, setFecha] = useState<string>(
+    reporteToEdit ? reporteToEdit.fecha : new Date().toISOString().split('T')[0]
+  );
   const [medioId, setMedioId] = useState<number>(() => {
+    if (reporteToEdit) return reporteToEdit.medio_id;
     // Default to 'Red Social' if exists
     const redSocialMedio = medios.find((m) => m.nombre.toLowerCase().includes('social'));
     return redSocialMedio ? redSocialMedio.id : (medios.length > 0 ? medios[0].id : 1);
@@ -93,29 +98,36 @@ export function FormularioReporte({
   }, [selectedMedio]);
 
   // Social media fields (only if isRedSocial)
-  const [redSocialId, setRedSocialId] = useState<number>(redes.length > 0 ? redes[0].id : 1);
-  const [tipoPubId, setTipoPubId] = useState<number>(tiposPub.length > 0 ? tiposPub[0].id : 1);
+  const [redSocialId, setRedSocialId] = useState<number>(
+    reporteToEdit?.red_social_id || (redes.length > 0 ? redes[0].id : 1)
+  );
+  const [tipoPubId, setTipoPubId] = useState<number>(
+    reporteToEdit?.tipo_publicacion_id || (tiposPub.length > 0 ? tiposPub[0].id : 1)
+  );
 
   // Engagement metrics (numeric manual input)
-  const [meGusta, setMeGusta] = useState<number>(0);
-  const [comentarios, setComentarios] = useState<number>(0);
-  const [compartidos, setCompartidos] = useState<number>(0);
-  const [guardados, setGuardados] = useState<number>(0);
-  const [reposts, setReposts] = useState<number>(0);
-  const [visualizaciones, setVisualizaciones] = useState<number>(0);
+  const [meGusta, setMeGusta] = useState<number>(reporteToEdit?.me_gusta ?? 0);
+  const [comentarios, setComentarios] = useState<number>(reporteToEdit?.comentarios ?? 0);
+  const [compartidos, setCompartidos] = useState<number>(reporteToEdit?.compartidos ?? 0);
+  const [guardados, setGuardados] = useState<number>(reporteToEdit?.guardados ?? 0);
+  const [reposts, setReposts] = useState<number>(reporteToEdit?.reposts ?? 0);
+  const [visualizaciones, setVisualizaciones] = useState<number>(reporteToEdit?.visualizaciones ?? 0);
 
   // Brand compliance questions (Yes / No)
-  const [marcaVisible, setMarcaVisible] = useState<boolean>(true);
-  const [etiquetoCarestino, setEtiquetoCarestino] = useState<boolean>(true);
-  const [etiquetoCarestinoPais, setEtiquetoCarestinoPais] = useState<boolean>(true);
-  const [etiquetoOtraPagina, setEtiquetoOtraPagina] = useState<boolean>(false);
+  const [marcaVisible, setMarcaVisible] = useState<boolean>(reporteToEdit?.marca_visible ?? true);
+  const [etiquetoCarestino, setEtiquetoCarestino] = useState<boolean>(reporteToEdit?.etiqueto_carestino ?? true);
+  const [etiquetoCarestinoPais, setEtiquetoCarestinoPais] = useState<boolean>(reporteToEdit?.etiqueto_carestino_pais ?? true);
+  const [etiquetoOtraPagina, setEtiquetoOtraPagina] = useState<boolean>(reporteToEdit?.etiqueto_otra_pagina ?? false);
 
   // Evidence fields
-  const [link, setLink] = useState<string>('');
-  const [capturaUrl, setCapturaUrl] = useState<string>('');
+  const [link, setLink] = useState<string>(reporteToEdit?.link || '');
+  const [capturaUrl, setCapturaUrl] = useState<string>(reporteToEdit?.captura_url || '');
 
   // Associated products from the agreement
   const [selectedProductos, setSelectedProductos] = useState<ReporteProductoItem[]>(() => {
+    if (reporteToEdit?.productos && reporteToEdit.productos.length > 0) {
+      return reporteToEdit.productos.map((p) => ({ sku: p.sku, categoria: p.categoria }));
+    }
     if (selectedAcuerdo?.productos && selectedAcuerdo.productos.length > 0) {
       const firstSku = selectedAcuerdo.productos[0].sku;
       const prod = productos.find((p) => p.sku === firstSku);
@@ -184,6 +196,7 @@ export function FormularioReporte({
     setIsSubmitting(true);
     try {
       await onSaveReporte({
+        ...(reporteToEdit ? { id: reporteToEdit.id } : {}),
         acuerdo_id: selectedAcuerdo.id,
         medio_id: medioId,
         red_social_id: isRedSocial ? redSocialId : null,
@@ -201,7 +214,7 @@ export function FormularioReporte({
         etiqueto_carestino: isRedSocial ? etiquetoCarestino : null,
         etiqueto_carestino_pais: isRedSocial ? etiquetoCarestinoPais : null,
         etiqueto_otra_pagina: isRedSocial ? etiquetoOtraPagina : null,
-        created_by: currentUser.id,
+        created_by: reporteToEdit ? (reporteToEdit.created_by || currentUser.id) : currentUser.id,
         productos: selectedProductos.map((p) => ({
           sku: p.sku,
           categoria: p.categoria,
@@ -221,7 +234,7 @@ export function FormularioReporte({
           <button
             type="button"
             onClick={onCancel}
-            className="p-2 rounded-xl border border-[#E7E7EA] bg-white text-[#4A4F57] hover:text-[#1F2226] hover:bg-[#F4F4F6] transition"
+            className="p-2 rounded-xl border border-[#E7E7EA] bg-white text-[#4A4F57] hover:text-[#1F2226] hover:bg-[#F4F4F6] transition cursor-pointer"
             title="Volver a lista de reportes"
           >
             <ArrowLeft className="w-4 h-4" />
@@ -231,10 +244,14 @@ export function FormularioReporte({
               <span className="text-[10px] font-bold uppercase tracking-wider bg-[#FFF2ED] text-[#F15A24] px-2 py-0.5 rounded border border-[#FED7AA]">
                 Formulario 3
               </span>
-              <h1 className="text-base font-bold text-[#1F2226]">Nuevo Reporte de Contenido</h1>
+              <h1 className="text-base font-bold text-[#1F2226]">
+                {reporteToEdit ? `Modificar Reporte #${reporteToEdit.id}` : 'Nuevo Reporte de Contenido'}
+              </h1>
             </div>
             <p className="text-xs text-[#4A4F57] mt-0.5">
-              Registro de publicaciones, links, capturas y métricas de engagement con visualización condicional.
+              {reporteToEdit
+                ? `Editando reporte #${reporteToEdit.id} del acuerdo con ${selectedAcuerdo?.influencer || ''}`
+                : 'Registro de publicaciones, links, capturas y métricas de engagement con visualización condicional.'}
             </p>
           </div>
         </div>
@@ -243,17 +260,23 @@ export function FormularioReporte({
           <button
             type="button"
             onClick={onCancel}
-            className="px-4 py-2 text-xs font-semibold text-[#4A4F57] bg-white border border-[#E7E7EA] rounded-xl hover:bg-[#F4F4F6] transition"
+            className="px-4 py-2 text-xs font-semibold text-[#4A4F57] bg-white border border-[#E7E7EA] rounded-xl hover:bg-[#F4F4F6] transition cursor-pointer"
           >
             Cancelar
           </button>
           <button
             type="submit"
             disabled={isSubmitting}
-            className="inline-flex items-center gap-2 px-5 py-2 text-xs font-bold text-white bg-[#F15A24] hover:bg-[#D94815] rounded-xl transition shadow-xs disabled:opacity-50"
+            className="inline-flex items-center gap-2 px-5 py-2 text-xs font-bold text-white bg-[#F15A24] hover:bg-[#D94815] rounded-xl transition shadow-xs disabled:opacity-50 cursor-pointer"
           >
             <BarChart2 className="w-4 h-4" />
-            <span>{isSubmitting ? 'Guardando...' : 'Guardar Reporte'}</span>
+            <span>
+              {isSubmitting
+                ? 'Guardando...'
+                : reporteToEdit
+                ? 'Guardar Modificaciones'
+                : 'Guardar Reporte'}
+            </span>
           </button>
         </div>
       </div>
@@ -816,10 +839,16 @@ export function FormularioReporte({
         <button
           type="submit"
           disabled={isSubmitting}
-          className="inline-flex items-center gap-2 px-6 py-2.5 text-xs font-bold text-white bg-[#F15A24] hover:bg-[#D94815] rounded-xl transition shadow-xs disabled:opacity-50"
+          className="inline-flex items-center gap-2 px-6 py-2.5 text-xs font-bold text-white bg-[#F15A24] hover:bg-[#D94815] rounded-xl transition shadow-xs disabled:opacity-50 cursor-pointer"
         >
           <BarChart2 className="w-4 h-4" />
-          <span>{isSubmitting ? 'Guardando...' : 'Guardar Reporte de Contenido'}</span>
+          <span>
+            {isSubmitting
+              ? 'Guardando...'
+              : reporteToEdit
+              ? 'Guardar Modificaciones del Reporte'
+              : 'Guardar Reporte de Contenido'}
+          </span>
         </button>
       </div>
     </form>

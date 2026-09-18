@@ -861,95 +861,182 @@ export class DataService {
 
   static async saveAcuerdo(acuerdoData: Omit<Acuerdo, 'id' | 'created_at'> & { id?: number }): Promise<Acuerdo> {
     const current = getLocal(STORAGE_KEY.ACUERDOS, INITIAL_ACUERDOS);
+    const existing = acuerdoData.id ? current.find((a) => a.id === acuerdoData.id) : undefined;
     const newId = acuerdoData.id || (current.length > 0 ? Math.max(...current.map((a) => a.id)) + 1 : 1001);
 
     const fullAcuerdo: Acuerdo = {
       ...acuerdoData,
       id: newId,
-      created_at: new Date().toISOString(),
+      created_at: existing?.created_at || new Date().toISOString(),
     };
 
     // Save locally
     setLocal(STORAGE_KEY.ACUERDOS, [fullAcuerdo, ...current.filter((a) => a.id !== newId)]);
 
-    // Try Supabase insert if available
+    // Try Supabase insert or update if available
     const supabase = getSupabase();
     if (supabase) {
       try {
-        const { data: insertedAcuerdo, error: acuerdoError } = await supabase
-          .from('acuerdos')
-          .insert({
-            solicitante_id: fullAcuerdo.solicitante_id,
-            responsable_id: fullAcuerdo.responsable_id,
-            pais_id: fullAcuerdo.pais_id,
-            influencer: fullAcuerdo.influencer,
-            seguidores: fullAcuerdo.seguidores,
-            link_instagram: fullAcuerdo.link_instagram,
-            celular: fullAcuerdo.celular,
-            target: fullAcuerdo.target,
-            tipo_contrato_id: fullAcuerdo.tipo_contrato_id,
-            contrato_link: fullAcuerdo.contrato_link,
-            contrato_archivo_url: fullAcuerdo.contrato_archivo_url,
-            monto_usd: fullAcuerdo.monto_usd,
-            tipo_envio: fullAcuerdo.tipo_envio,
-            costo_envio_usd: fullAcuerdo.costo_envio_usd,
-            meses_acordados: fullAcuerdo.meses_acordados,
-            fecha_inicio: fullAcuerdo.fecha_inicio,
-            fecha_fin: fullAcuerdo.fecha_fin,
-            stories_totales: fullAcuerdo.stories_totales,
-            feeds_totales: fullAcuerdo.feeds_totales,
-            cantidad_retiros: fullAcuerdo.cantidad_retiros,
-            fechas_retiro_estimadas: fullAcuerdo.fechas_retiro_estimadas,
-            cantidad_entregas: fullAcuerdo.cantidad_entregas,
-            fechas_entrega_estimadas: fullAcuerdo.fechas_entrega_estimadas,
-          })
-          .select()
-          .single();
+        if (acuerdoData.id) {
+          // UPDATE EXISTING
+          await supabase
+            .from('acuerdos')
+            .update({
+              solicitante_id: fullAcuerdo.solicitante_id,
+              responsable_id: fullAcuerdo.responsable_id,
+              pais_id: fullAcuerdo.pais_id,
+              influencer: fullAcuerdo.influencer,
+              seguidores: fullAcuerdo.seguidores,
+              link_instagram: fullAcuerdo.link_instagram,
+              celular: fullAcuerdo.celular,
+              target: fullAcuerdo.target,
+              tipo_contrato_id: fullAcuerdo.tipo_contrato_id,
+              contrato_link: fullAcuerdo.contrato_link,
+              contrato_archivo_url: fullAcuerdo.contrato_archivo_url,
+              monto_usd: fullAcuerdo.monto_usd,
+              tipo_envio: fullAcuerdo.tipo_envio,
+              costo_envio_usd: fullAcuerdo.costo_envio_usd,
+              meses_acordados: fullAcuerdo.meses_acordados,
+              fecha_inicio: fullAcuerdo.fecha_inicio,
+              fecha_fin: fullAcuerdo.fecha_fin,
+              stories_totales: fullAcuerdo.stories_totales,
+              feeds_totales: fullAcuerdo.feeds_totales,
+              cantidad_retiros: fullAcuerdo.cantidad_retiros,
+              fechas_retiro_estimadas: fullAcuerdo.fechas_retiro_estimadas,
+              cantidad_entregas: fullAcuerdo.cantidad_entregas,
+              fechas_entrega_estimadas: fullAcuerdo.fechas_entrega_estimadas,
+            })
+            .eq('id', acuerdoData.id);
 
-        if (!acuerdoError && insertedAcuerdo) {
-          const insertedId = insertedAcuerdo.id;
-
-          // Insert paises impacto
+          // Update paises impacto
+          await supabase.from('acuerdo_paises_impacto').delete().eq('acuerdo_id', acuerdoData.id);
           if (fullAcuerdo.paises_impacto && fullAcuerdo.paises_impacto.length > 0) {
             await supabase.from('acuerdo_paises_impacto').insert(
               fullAcuerdo.paises_impacto.map((p) => ({
-                acuerdo_id: insertedId,
+                acuerdo_id: acuerdoData.id,
                 pais_id: p.pais_id,
                 peso: p.peso,
               }))
             );
           }
 
-          // Insert productos
+          // Update productos
+          await supabase.from('acuerdo_productos').delete().eq('acuerdo_id', acuerdoData.id);
           if (fullAcuerdo.productos && fullAcuerdo.productos.length > 0) {
             await supabase.from('acuerdo_productos').insert(
               fullAcuerdo.productos.map((pr) => ({
-                acuerdo_id: insertedId,
+                acuerdo_id: acuerdoData.id,
                 sku: pr.sku,
                 cantidad_acordada: pr.cantidad_acordada,
-                cantidad_restante: pr.cantidad_acordada,
+                cantidad_restante: pr.cantidad_restante ?? pr.cantidad_acordada,
               }))
             );
           }
 
-          // Insert otros contenidos
+          // Update otros contenidos
+          await supabase.from('acuerdo_otros_contenidos').delete().eq('acuerdo_id', acuerdoData.id);
           if (fullAcuerdo.otros_contenidos && fullAcuerdo.otros_contenidos.length > 0) {
             await supabase.from('acuerdo_otros_contenidos').insert(
               fullAcuerdo.otros_contenidos.map((t) => ({
-                acuerdo_id: insertedId,
+                acuerdo_id: acuerdoData.id,
                 tipo: t,
               }))
             );
           }
+        } else {
+          // INSERT NEW
+          const { data: insertedAcuerdo, error: acuerdoError } = await supabase
+            .from('acuerdos')
+            .insert({
+              solicitante_id: fullAcuerdo.solicitante_id,
+              responsable_id: fullAcuerdo.responsable_id,
+              pais_id: fullAcuerdo.pais_id,
+              influencer: fullAcuerdo.influencer,
+              seguidores: fullAcuerdo.seguidores,
+              link_instagram: fullAcuerdo.link_instagram,
+              celular: fullAcuerdo.celular,
+              target: fullAcuerdo.target,
+              tipo_contrato_id: fullAcuerdo.tipo_contrato_id,
+              contrato_link: fullAcuerdo.contrato_link,
+              contrato_archivo_url: fullAcuerdo.contrato_archivo_url,
+              monto_usd: fullAcuerdo.monto_usd,
+              tipo_envio: fullAcuerdo.tipo_envio,
+              costo_envio_usd: fullAcuerdo.costo_envio_usd,
+              meses_acordados: fullAcuerdo.meses_acordados,
+              fecha_inicio: fullAcuerdo.fecha_inicio,
+              fecha_fin: fullAcuerdo.fecha_fin,
+              stories_totales: fullAcuerdo.stories_totales,
+              feeds_totales: fullAcuerdo.feeds_totales,
+              cantidad_retiros: fullAcuerdo.cantidad_retiros,
+              fechas_retiro_estimadas: fullAcuerdo.fechas_retiro_estimadas,
+              cantidad_entregas: fullAcuerdo.cantidad_entregas,
+              fechas_entrega_estimadas: fullAcuerdo.fechas_entrega_estimadas,
+            })
+            .select()
+            .single();
 
-          fullAcuerdo.id = insertedId;
+          if (!acuerdoError && insertedAcuerdo) {
+            const insertedId = insertedAcuerdo.id;
+
+            // Insert paises impacto
+            if (fullAcuerdo.paises_impacto && fullAcuerdo.paises_impacto.length > 0) {
+              await supabase.from('acuerdo_paises_impacto').insert(
+                fullAcuerdo.paises_impacto.map((p) => ({
+                  acuerdo_id: insertedId,
+                  pais_id: p.pais_id,
+                  peso: p.peso,
+                }))
+              );
+            }
+
+            // Insert productos
+            if (fullAcuerdo.productos && fullAcuerdo.productos.length > 0) {
+              await supabase.from('acuerdo_productos').insert(
+                fullAcuerdo.productos.map((pr) => ({
+                  acuerdo_id: insertedId,
+                  sku: pr.sku,
+                  cantidad_acordada: pr.cantidad_acordada,
+                  cantidad_restante: pr.cantidad_acordada,
+                }))
+              );
+            }
+
+            // Insert otros contenidos
+            if (fullAcuerdo.otros_contenidos && fullAcuerdo.otros_contenidos.length > 0) {
+              await supabase.from('acuerdo_otros_contenidos').insert(
+                fullAcuerdo.otros_contenidos.map((t) => ({
+                  acuerdo_id: insertedId,
+                  tipo: t,
+                }))
+              );
+            }
+
+            fullAcuerdo.id = insertedId;
+          }
         }
       } catch (err) {
-        console.warn('Supabase full agreement insert error:', err);
+        console.warn('Supabase agreement save error:', err);
       }
     }
 
     return fullAcuerdo;
+  }
+
+  static async deleteAcuerdo(id: number): Promise<void> {
+    const current = getLocal(STORAGE_KEY.ACUERDOS, INITIAL_ACUERDOS);
+    setLocal(STORAGE_KEY.ACUERDOS, current.filter((a) => a.id !== id));
+
+    const supabase = getSupabase();
+    if (supabase) {
+      try {
+        await supabase.from('acuerdo_paises_impacto').delete().eq('acuerdo_id', id);
+        await supabase.from('acuerdo_productos').delete().eq('acuerdo_id', id);
+        await supabase.from('acuerdo_otros_contenidos').delete().eq('acuerdo_id', id);
+        await supabase.from('acuerdos').delete().eq('id', id);
+      } catch (e) {
+        console.warn('Supabase delete acuerdo error:', e);
+      }
+    }
   }
 
   // Pedidos (Formulario 2)
@@ -975,73 +1062,117 @@ export class DataService {
 
   static async savePedido(pedidoData: Omit<Pedido, 'id' | 'created_at'> & { id?: number }): Promise<Pedido> {
     const current = getLocal(STORAGE_KEY.PEDIDOS, INITIAL_PEDIDOS);
+    const existing = pedidoData.id ? current.find((p) => p.id === pedidoData.id) : undefined;
     const newId = pedidoData.id || (current.length > 0 ? Math.max(...current.map((p) => p.id)) + 1 : 5001);
 
     const fullPedido: Pedido = {
       ...pedidoData,
       id: newId,
-      created_at: new Date().toISOString(),
+      created_at: existing?.created_at || new Date().toISOString(),
     };
 
-    // Save locally
-    setLocal(STORAGE_KEY.PEDIDOS, [fullPedido, ...current.filter((p) => p.id !== newId)]);
-
-    // Update remaining quantities on the linked agreement (SQL trigger simulation)
+    // If updating, first restore previous quantities from this order on the acuerdo
     const acuerdos = getLocal(STORAGE_KEY.ACUERDOS, INITIAL_ACUERDOS);
-    const acuerdoIdx = acuerdos.findIndex((a) => a.id === fullPedido.acuerdo_id);
-    if (acuerdoIdx >= 0) {
-      const acuerdo = acuerdos[acuerdoIdx];
-      if (acuerdo.productos) {
-        acuerdo.productos = acuerdo.productos.map((ap) => {
-          const pedProd = fullPedido.productos?.find((pp) => pp.sku === ap.sku);
-          if (pedProd) {
+    if (existing && existing.productos) {
+      const acuerdoPrevIdx = acuerdos.findIndex((a) => a.id === existing.acuerdo_id);
+      if (acuerdoPrevIdx >= 0 && acuerdos[acuerdoPrevIdx].productos) {
+        acuerdos[acuerdoPrevIdx].productos = acuerdos[acuerdoPrevIdx].productos!.map((ap) => {
+          const prevProd = existing.productos?.find((pp) => pp.sku === ap.sku);
+          if (prevProd) {
             return {
               ...ap,
-              cantidad_restante: Math.max(0, (ap.cantidad_restante ?? ap.cantidad_acordada) - pedProd.cantidad),
+              cantidad_restante: Math.min(ap.cantidad_acordada, (ap.cantidad_restante ?? 0) + prevProd.cantidad),
             };
           }
           return ap;
         });
-        acuerdos[acuerdoIdx] = { ...acuerdo };
-        setLocal(STORAGE_KEY.ACUERDOS, acuerdos);
       }
     }
 
-    // Try Supabase insert if available
+    // Now subtract the new order quantities from the target agreement
+    const acuerdoIdx = acuerdos.findIndex((a) => a.id === fullPedido.acuerdo_id);
+    if (acuerdoIdx >= 0 && acuerdos[acuerdoIdx].productos) {
+      acuerdos[acuerdoIdx].productos = acuerdos[acuerdoIdx].productos!.map((ap) => {
+        const pedProd = fullPedido.productos?.find((pp) => pp.sku === ap.sku);
+        if (pedProd) {
+          return {
+            ...ap,
+            cantidad_restante: Math.max(0, (ap.cantidad_restante ?? ap.cantidad_acordada) - pedProd.cantidad),
+          };
+        }
+        return ap;
+      });
+      setLocal(STORAGE_KEY.ACUERDOS, acuerdos);
+    }
+
+    // Save locally
+    setLocal(STORAGE_KEY.PEDIDOS, [fullPedido, ...current.filter((p) => p.id !== newId)]);
+
+    // Try Supabase insert or update if available
     const supabase = getSupabase();
     if (supabase) {
       try {
-        const { data: inserted, error } = await supabase
-          .from('pedidos')
-          .insert({
-            acuerdo_id: fullPedido.acuerdo_id,
-            fecha: fullPedido.fecha,
-            tipo_entrega: fullPedido.tipo_entrega,
-            tienda_id: fullPedido.tienda_id,
-            direccion: fullPedido.direccion,
-            codigo_postal: fullPedido.codigo_postal,
-            localidad: fullPedido.localidad,
-            provincia: fullPedido.provincia,
-            comentarios: fullPedido.comentarios,
-            created_by: fullPedido.created_by,
-          })
-          .select()
-          .single();
+        if (pedidoData.id) {
+          // UPDATE EXISTING
+          await supabase
+            .from('pedidos')
+            .update({
+              acuerdo_id: fullPedido.acuerdo_id,
+              fecha: fullPedido.fecha,
+              tipo_entrega: fullPedido.tipo_entrega,
+              tienda_id: fullPedido.tienda_id,
+              direccion: fullPedido.direccion,
+              codigo_postal: fullPedido.codigo_postal,
+              localidad: fullPedido.localidad,
+              provincia: fullPedido.provincia,
+              comentarios: fullPedido.comentarios,
+            })
+            .eq('id', pedidoData.id);
 
-        if (!error && inserted) {
+          await supabase.from('pedido_productos').delete().eq('pedido_id', pedidoData.id);
           if (fullPedido.productos && fullPedido.productos.length > 0) {
             await supabase.from('pedido_productos').insert(
               fullPedido.productos.map((pp) => ({
-                pedido_id: inserted.id,
+                pedido_id: pedidoData.id,
                 sku: pp.sku,
                 cantidad: pp.cantidad,
               }))
             );
           }
-          fullPedido.id = inserted.id;
+        } else {
+          // INSERT NEW
+          const { data: inserted, error } = await supabase
+            .from('pedidos')
+            .insert({
+              acuerdo_id: fullPedido.acuerdo_id,
+              fecha: fullPedido.fecha,
+              tipo_entrega: fullPedido.tipo_entrega,
+              tienda_id: fullPedido.tienda_id,
+              direccion: fullPedido.direccion,
+              codigo_postal: fullPedido.codigo_postal,
+              localidad: fullPedido.localidad,
+              provincia: fullPedido.provincia,
+              comentarios: fullPedido.comentarios,
+              created_by: fullPedido.created_by,
+            })
+            .select()
+            .single();
+
+          if (!error && inserted) {
+            if (fullPedido.productos && fullPedido.productos.length > 0) {
+              await supabase.from('pedido_productos').insert(
+                fullPedido.productos.map((pp) => ({
+                  pedido_id: inserted.id,
+                  sku: pp.sku,
+                  cantidad: pp.cantidad,
+                }))
+              );
+            }
+            fullPedido.id = inserted.id;
+          }
         }
       } catch (err) {
-        console.warn('Supabase pedido insert error:', err);
+        console.warn('Supabase pedido save error:', err);
       }
     }
 
@@ -1108,12 +1239,13 @@ export class DataService {
 
   static async saveReporte(reporteData: Omit<Reporte, 'id' | 'created_at'> & { id?: number }): Promise<Reporte> {
     const current = getLocal(STORAGE_KEY.REPORTES, INITIAL_REPORTES);
+    const existing = reporteData.id ? current.find((r) => r.id === reporteData.id) : undefined;
     const newId = reporteData.id || (current.length > 0 ? Math.max(...current.map((r) => r.id)) + 1 : 7001);
 
     const fullReporte: Reporte = {
       ...reporteData,
       id: newId,
-      created_at: new Date().toISOString(),
+      created_at: existing?.created_at || new Date().toISOString(),
     };
 
     setLocal(STORAGE_KEY.REPORTES, [fullReporte, ...current.filter((r) => r.id !== newId)]);
@@ -1121,45 +1253,83 @@ export class DataService {
     const supabase = getSupabase();
     if (supabase) {
       try {
-        const { data: inserted, error } = await supabase
-          .from('reportes')
-          .insert({
-            acuerdo_id: fullReporte.acuerdo_id,
-            medio_id: fullReporte.medio_id,
-            red_social_id: fullReporte.red_social_id,
-            tipo_publicacion_id: fullReporte.tipo_publicacion_id,
-            link: fullReporte.link,
-            captura_url: fullReporte.captura_url,
-            fecha: fullReporte.fecha,
-            me_gusta: fullReporte.me_gusta,
-            comentarios: fullReporte.comentarios,
-            compartidos: fullReporte.compartidos,
-            guardados: fullReporte.guardados,
-            reposts: fullReporte.reposts,
-            visualizaciones: fullReporte.visualizaciones,
-            marca_visible: fullReporte.marca_visible,
-            etiqueto_carestino: fullReporte.etiqueto_carestino,
-            etiqueto_carestino_pais: fullReporte.etiqueto_carestino_pais,
-            etiqueto_otra_pagina: fullReporte.etiqueto_otra_pagina,
-            created_by: fullReporte.created_by,
-          })
-          .select()
-          .single();
+        if (reporteData.id) {
+          // UPDATE EXISTING
+          await supabase
+            .from('reportes')
+            .update({
+              acuerdo_id: fullReporte.acuerdo_id,
+              medio_id: fullReporte.medio_id,
+              red_social_id: fullReporte.red_social_id,
+              tipo_publicacion_id: fullReporte.tipo_publicacion_id,
+              link: fullReporte.link,
+              captura_url: fullReporte.captura_url,
+              fecha: fullReporte.fecha,
+              me_gusta: fullReporte.me_gusta,
+              comentarios: fullReporte.comentarios,
+              compartidos: fullReporte.compartidos,
+              guardados: fullReporte.guardados,
+              reposts: fullReporte.reposts,
+              visualizaciones: fullReporte.visualizaciones,
+              marca_visible: fullReporte.marca_visible,
+              etiqueto_carestino: fullReporte.etiqueto_carestino,
+              etiqueto_carestino_pais: fullReporte.etiqueto_carestino_pais,
+              etiqueto_otra_pagina: fullReporte.etiqueto_otra_pagina,
+            })
+            .eq('id', reporteData.id);
 
-        if (!error && inserted) {
+          await supabase.from('reporte_productos').delete().eq('reporte_id', reporteData.id);
           if (fullReporte.productos && fullReporte.productos.length > 0) {
             await supabase.from('reporte_productos').insert(
               fullReporte.productos.map((rp) => ({
-                reporte_id: inserted.id,
+                reporte_id: reporteData.id,
                 sku: rp.sku,
                 categoria: rp.categoria,
               }))
             );
           }
-          fullReporte.id = inserted.id;
+        } else {
+          // INSERT NEW
+          const { data: inserted, error } = await supabase
+            .from('reportes')
+            .insert({
+              acuerdo_id: fullReporte.acuerdo_id,
+              medio_id: fullReporte.medio_id,
+              red_social_id: fullReporte.red_social_id,
+              tipo_publicacion_id: fullReporte.tipo_publicacion_id,
+              link: fullReporte.link,
+              captura_url: fullReporte.captura_url,
+              fecha: fullReporte.fecha,
+              me_gusta: fullReporte.me_gusta,
+              comentarios: fullReporte.comentarios,
+              compartidos: fullReporte.compartidos,
+              guardados: fullReporte.guardados,
+              reposts: fullReporte.reposts,
+              visualizaciones: fullReporte.visualizaciones,
+              marca_visible: fullReporte.marca_visible,
+              etiqueto_carestino: fullReporte.etiqueto_carestino,
+              etiqueto_carestino_pais: fullReporte.etiqueto_carestino_pais,
+              etiqueto_otra_pagina: fullReporte.etiqueto_otra_pagina,
+              created_by: fullReporte.created_by,
+            })
+            .select()
+            .single();
+
+          if (!error && inserted) {
+            if (fullReporte.productos && fullReporte.productos.length > 0) {
+              await supabase.from('reporte_productos').insert(
+                fullReporte.productos.map((rp) => ({
+                  reporte_id: inserted.id,
+                  sku: rp.sku,
+                  categoria: rp.categoria,
+                }))
+              );
+            }
+            fullReporte.id = inserted.id;
+          }
         }
       } catch (err) {
-        console.warn('Supabase reporte insert error:', err);
+        console.warn('Supabase reporte save error:', err);
       }
     }
 
@@ -1178,5 +1348,45 @@ export class DataService {
         console.warn('Supabase delete reporte error:', e);
       }
     }
+  }
+
+  // Bulk import methods for Forms 1, 2, and 3
+  static async saveAcuerdosBulk(acuerdosList: Array<Omit<Acuerdo, 'id' | 'created_at'>>): Promise<Acuerdo[]> {
+    const savedList: Acuerdo[] = [];
+    for (const item of acuerdosList) {
+      try {
+        const saved = await this.saveAcuerdo(item);
+        savedList.push(saved);
+      } catch (err) {
+        console.error('Error saving bulk acuerdo item:', err);
+      }
+    }
+    return savedList;
+  }
+
+  static async savePedidosBulk(pedidosList: Array<Omit<Pedido, 'id' | 'created_at'>>): Promise<Pedido[]> {
+    const savedList: Pedido[] = [];
+    for (const item of pedidosList) {
+      try {
+        const saved = await this.savePedido(item);
+        savedList.push(saved);
+      } catch (err) {
+        console.error('Error saving bulk pedido item:', err);
+      }
+    }
+    return savedList;
+  }
+
+  static async saveReportesBulk(reportesList: Array<Omit<Reporte, 'id' | 'created_at'>>): Promise<Reporte[]> {
+    const savedList: Reporte[] = [];
+    for (const item of reportesList) {
+      try {
+        const saved = await this.saveReporte(item);
+        savedList.push(saved);
+      } catch (err) {
+        console.error('Error saving bulk reporte item:', err);
+      }
+    }
+    return savedList;
   }
 }

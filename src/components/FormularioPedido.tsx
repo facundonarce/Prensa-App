@@ -29,7 +29,8 @@ interface FormularioPedidoProps {
   usuarios: Usuario[];
   currentUser: Usuario;
   initialAcuerdoId?: number;
-  onSavePedido: (pedido: Omit<Pedido, 'id' | 'created_at'>) => Promise<void>;
+  pedidoToEdit?: Pedido | null;
+  onSavePedido: (pedido: Omit<Pedido, 'id' | 'created_at'> & { id?: number }) => Promise<void>;
   onCancel: () => void;
 }
 
@@ -45,12 +46,13 @@ export function FormularioPedido({
   usuarios,
   currentUser,
   initialAcuerdoId,
+  pedidoToEdit,
   onSavePedido,
   onCancel,
 }: FormularioPedidoProps) {
   // Select an agreement
   const [selectedAcuerdoId, setSelectedAcuerdoId] = useState<number>(
-    initialAcuerdoId || (acuerdos.length > 0 ? acuerdos[0].id : 0)
+    pedidoToEdit ? pedidoToEdit.acuerdo_id : (initialAcuerdoId || (acuerdos.length > 0 ? acuerdos[0].id : 0))
   );
 
   const selectedAcuerdo = useMemo(() => {
@@ -77,16 +79,23 @@ export function FormularioPedido({
   }, [usuarios, selectedAcuerdo]);
 
   // Form State
-  const [fecha, setFecha] = useState<string>(new Date().toISOString().split('T')[0]);
-  const [tiendaId, setTiendaId] = useState<number>(tiendas.length > 0 ? tiendas[0].id : 1);
-  const [direccion, setDireccion] = useState<string>('');
-  const [codigoPostal, setCodigoPostal] = useState<string>('');
-  const [localidad, setLocalidad] = useState<string>('');
-  const [provincia, setProvincia] = useState<string>('');
-  const [comentarios, setComentarios] = useState<string>('');
+  const [fecha, setFecha] = useState<string>(
+    pedidoToEdit ? pedidoToEdit.fecha : new Date().toISOString().split('T')[0]
+  );
+  const [tiendaId, setTiendaId] = useState<number>(
+    pedidoToEdit?.tienda_id || (tiendas.length > 0 ? tiendas[0].id : 1)
+  );
+  const [direccion, setDireccion] = useState<string>(pedidoToEdit?.direccion || '');
+  const [codigoPostal, setCodigoPostal] = useState<string>(pedidoToEdit?.codigo_postal || '');
+  const [localidad, setLocalidad] = useState<string>(pedidoToEdit?.localidad || '');
+  const [provincia, setProvincia] = useState<string>(pedidoToEdit?.provincia || '');
+  const [comentarios, setComentarios] = useState<string>(pedidoToEdit?.comentarios || '');
 
   // Products to dispatch in this order
   const [pedidoProductos, setPedidoProductos] = useState<ProductItem[]>(() => {
+    if (pedidoToEdit?.productos && pedidoToEdit.productos.length > 0) {
+      return pedidoToEdit.productos.map((p) => ({ sku: p.sku, cantidad: p.cantidad }));
+    }
     if (selectedAcuerdo?.productos && selectedAcuerdo.productos.length > 0) {
       const firstAvailable = selectedAcuerdo.productos.find((p) => (p.cantidad_restante ?? p.cantidad_acordada) > 0)
         || selectedAcuerdo.productos[0];
@@ -174,10 +183,11 @@ export function FormularioPedido({
         continue;
       }
 
-      const restante = acuerdoProd.cantidad_restante ?? acuerdoProd.cantidad_acordada;
+      const prevQtyInThisPedido = pedidoToEdit?.productos?.find((p) => p.sku === item.sku)?.cantidad || 0;
+      const restante = (acuerdoProd.cantidad_restante ?? acuerdoProd.cantidad_acordada) + prevQtyInThisPedido;
       if (item.cantidad > restante) {
         errors.push(
-          `La cantidad solicitada (${item.cantidad}) para el SKU "${item.sku}" supera el remanente disponible en el contrato (${restante} disponibles de ${acuerdoProd.cantidad_acordada} pactados).`
+          `La cantidad solicitada (${item.cantidad}) para el SKU "${item.sku}" supera el remanente disponible (${restante} disponibles${prevQtyInThisPedido > 0 ? ' incluyendo unidades ya reservadas en este pedido' : ''}).`
         );
       }
       if (item.cantidad <= 0) {
@@ -194,7 +204,7 @@ export function FormularioPedido({
     }
 
     return errors;
-  }, [isAuthorized, selectedAcuerdo, pedidoProductos, direccion, localidad, tiendaId]);
+  }, [isAuthorized, selectedAcuerdo, pedidoProductos, direccion, localidad, tiendaId, pedidoToEdit]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -208,6 +218,7 @@ export function FormularioPedido({
     setIsSubmitting(true);
     try {
       await onSavePedido({
+        ...(pedidoToEdit ? { id: pedidoToEdit.id } : {}),
         acuerdo_id: selectedAcuerdo.id,
         fecha,
         tipo_entrega: selectedAcuerdo.tipo_envio,
@@ -217,7 +228,7 @@ export function FormularioPedido({
         localidad: selectedAcuerdo.tipo_envio === 'domicilio' ? localidad : null,
         provincia: selectedAcuerdo.tipo_envio === 'domicilio' ? provincia : null,
         comentarios: comentarios.trim() || null,
-        created_by: currentUser.id,
+        created_by: pedidoToEdit ? (pedidoToEdit.created_by || currentUser.id) : currentUser.id,
         productos: pedidoProductos.map((p) => ({
           sku: p.sku,
           cantidad: p.cantidad,
@@ -237,7 +248,7 @@ export function FormularioPedido({
           <button
             type="button"
             onClick={onCancel}
-            className="p-2 rounded-xl border border-[#E7E7EA] bg-white text-[#4A4F57] hover:text-[#1F2226] hover:bg-[#F4F4F6] transition"
+            className="p-2 rounded-xl border border-[#E7E7EA] bg-white text-[#4A4F57] hover:text-[#1F2226] hover:bg-[#F4F4F6] transition cursor-pointer"
             title="Volver a lista de pedidos"
           >
             <ArrowLeft className="w-4 h-4" />
@@ -247,10 +258,14 @@ export function FormularioPedido({
               <span className="text-[10px] font-bold uppercase tracking-wider bg-[#FFF2ED] text-[#F15A24] px-2 py-0.5 rounded border border-[#FED7AA]">
                 Formulario 2
               </span>
-              <h1 className="text-base font-bold text-[#1F2226]">Nuevo Pedido de Producto</h1>
+              <h1 className="text-base font-bold text-[#1F2226]">
+                {pedidoToEdit ? `Modificar Pedido #${pedidoToEdit.id}` : 'Nuevo Pedido de Producto'}
+              </h1>
             </div>
             <p className="text-xs text-[#4A4F57] mt-0.5">
-              Despacho de productos asociados al contrato con validación estricta de remanente disponible.
+              {pedidoToEdit
+                ? `Editando pedido #${pedidoToEdit.id} del acuerdo con ${selectedAcuerdo?.influencer || ''}`
+                : 'Despacho de productos asociados al contrato con validación estricta de remanente disponible.'}
             </p>
           </div>
         </div>
@@ -671,10 +686,16 @@ export function FormularioPedido({
         <button
           type="submit"
           disabled={validationErrors.length > 0 || isSubmitting}
-          className="inline-flex items-center gap-2 px-6 py-2.5 text-xs font-bold text-white bg-[#F15A24] hover:bg-[#D94815] rounded-xl transition shadow-xs disabled:opacity-50 disabled:cursor-not-allowed"
+          className="inline-flex items-center gap-2 px-6 py-2.5 text-xs font-bold text-white bg-[#F15A24] hover:bg-[#D94815] rounded-xl transition shadow-xs disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
         >
           <ShoppingBag className="w-4 h-4" />
-          <span>{isSubmitting ? 'Guardando...' : 'Confirmar y Generar Pedido'}</span>
+          <span>
+            {isSubmitting
+              ? 'Guardando...'
+              : pedidoToEdit
+              ? 'Guardar Modificaciones del Pedido'
+              : 'Confirmar y Generar Pedido'}
+          </span>
         </button>
       </div>
     </form>

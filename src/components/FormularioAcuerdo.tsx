@@ -16,6 +16,7 @@ import {
   Save,
   ArrowLeft,
   Sparkles,
+  FileSpreadsheet,
 } from 'lucide-react';
 import {
   Pais,
@@ -40,8 +41,10 @@ interface FormularioAcuerdoProps {
   tiendas: Tienda[];
   tiposContrato: TipoContrato[];
   escalones: EscalonesSeguidores[];
-  onSave: (acuerdo: Omit<Acuerdo, 'id' | 'created_at'>) => Promise<Acuerdo>;
+  onSave: (acuerdo: Omit<Acuerdo, 'id' | 'created_at'> & { id?: number }) => Promise<Acuerdo>;
   onCancel: () => void;
+  onOpenImport?: () => void;
+  acuerdoToEdit?: Acuerdo | null;
 }
 
 export function FormularioAcuerdo({
@@ -54,19 +57,33 @@ export function FormularioAcuerdo({
   escalones,
   onSave,
   onCancel,
+  onOpenImport,
+  acuerdoToEdit,
 }: FormularioAcuerdoProps) {
   // 1. Basic Info
-  const [responsableId, setResponsableId] = useState(currentUser.id);
-  const [paisId, setPaisId] = useState<number>(paises[0]?.id || 1);
-  const [influencer, setInfluencer] = useState('');
-  const [seguidores, setSeguidores] = useState<number | ''>('');
-  const [linkInstagram, setLinkInstagram] = useState('');
-  const [celular, setCelular] = useState('');
-  const [target, setTarget] = useState(true);
-  const [tipoContratoId, setTipoContratoId] = useState<number>(tiposContrato[0]?.id || 1);
+  const [responsableId, setResponsableId] = useState(
+    acuerdoToEdit ? acuerdoToEdit.responsable_id : currentUser.id
+  );
+  const [paisId, setPaisId] = useState<number>(
+    acuerdoToEdit ? acuerdoToEdit.pais_id : (paises[0]?.id || 1)
+  );
+  const [influencer, setInfluencer] = useState(acuerdoToEdit ? acuerdoToEdit.influencer : '');
+  const [seguidores, setSeguidores] = useState<number | ''>(
+    acuerdoToEdit ? acuerdoToEdit.seguidores : ''
+  );
+  const [linkInstagram, setLinkInstagram] = useState(
+    acuerdoToEdit?.link_instagram || ''
+  );
+  const [celular, setCelular] = useState(acuerdoToEdit?.celular || '');
+  const [target, setTarget] = useState(acuerdoToEdit ? acuerdoToEdit.target : true);
+  const [tipoContratoId, setTipoContratoId] = useState<number>(
+    acuerdoToEdit ? acuerdoToEdit.tipo_contrato_id : (tiposContrato[0]?.id || 1)
+  );
 
   // 2. Monto & Calculo Meses Teóricos
-  const [montoUsd, setMontoUsd] = useState<number | ''>('');
+  const [montoUsd, setMontoUsd] = useState<number | ''>(
+    acuerdoToEdit ? acuerdoToEdit.monto_usd : ''
+  );
 
   const numSeguidores = typeof seguidores === 'number' ? seguidores : 0;
   const numMontoUsd = typeof montoUsd === 'number' ? montoUsd : 0;
@@ -78,35 +95,47 @@ export function FormularioAcuerdo({
   const mesesTeoricos = theoreticalCalc.meses;
 
   // 3. Meses acordados & Fechas (mes y año)
-  const [mesesAcordados, setMesesAcordados] = useState<number>(1);
+  const [mesesAcordados, setMesesAcordados] = useState<number>(
+    acuerdoToEdit ? acuerdoToEdit.meses_acordados : 1
+  );
   const [fechaInicio, setFechaInicio] = useState(() => {
+    if (acuerdoToEdit?.fecha_inicio) {
+      return acuerdoToEdit.fecha_inicio.substring(0, 7);
+    }
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   });
   const [fechaFin, setFechaFin] = useState(() => {
+    if (acuerdoToEdit?.fecha_fin) {
+      return acuerdoToEdit.fecha_fin.substring(0, 7);
+    }
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 2).padStart(2, '0')}`;
   });
 
   // 4. Stories y Feeds totales acordados (por defecto = meses acordados)
-  const [storiesTotales, setStoriesTotales] = useState<number>(1);
-  const [feedsTotales, setFeedsTotales] = useState<number>(1);
-  const [isManualDeliverables, setIsManualDeliverables] = useState(false);
+  const [storiesTotales, setStoriesTotales] = useState<number>(
+    acuerdoToEdit ? acuerdoToEdit.stories_totales : 1
+  );
+  const [feedsTotales, setFeedsTotales] = useState<number>(
+    acuerdoToEdit ? acuerdoToEdit.feeds_totales : 1
+  );
+  const [isManualDeliverables, setIsManualDeliverables] = useState(Boolean(acuerdoToEdit));
 
   // Auto sync deliverables when mesesAcordados changes unless manually overridden
   useEffect(() => {
-    if (!isManualDeliverables) {
+    if (!isManualDeliverables && !acuerdoToEdit) {
       setStoriesTotales(mesesAcordados);
       setFeedsTotales(mesesAcordados);
     }
-  }, [mesesAcordados, isManualDeliverables]);
+  }, [mesesAcordados, isManualDeliverables, acuerdoToEdit]);
 
   // When theoretical months updates, suggest setting meses acordados if user hasn't modified it
   useEffect(() => {
-    if (mesesTeoricos > 0 && mesesAcordados === 1) {
+    if (!acuerdoToEdit && mesesTeoricos > 0 && mesesAcordados === 1) {
       setMesesAcordados(mesesTeoricos);
     }
-  }, [mesesTeoricos]);
+  }, [mesesTeoricos, acuerdoToEdit]);
 
   // 5. Otros contenidos acordados
   const [otrosContenidos, setOtrosContenidos] = useState<{
@@ -114,22 +143,25 @@ export function FormularioAcuerdo({
     youtube: boolean;
     facebook: boolean;
   }>({
-    tiktok: false,
-    youtube: false,
-    facebook: false,
+    tiktok: Boolean(acuerdoToEdit?.otros_contenidos?.includes('tiktok')),
+    youtube: Boolean(acuerdoToEdit?.otros_contenidos?.includes('youtube')),
+    facebook: Boolean(acuerdoToEdit?.otros_contenidos?.includes('facebook')),
   });
 
   // 6. Impacto por país (% peso) - Validation: Sum must be exactly 100
-  const [paisesImpacto, setPaisesImpacto] = useState<Array<{ pais_id: number; peso: number }>>([
-    { pais_id: paisId, peso: 100 },
-  ]);
+  const [paisesImpacto, setPaisesImpacto] = useState<Array<{ pais_id: number; peso: number }>>(() => {
+    if (acuerdoToEdit?.paises_impacto && acuerdoToEdit.paises_impacto.length > 0) {
+      return acuerdoToEdit.paises_impacto.map((p) => ({ pais_id: p.pais_id, peso: p.peso }));
+    }
+    return [{ pais_id: paisId, peso: 100 }];
+  });
 
   // Keep primary country as first impact row if list only has 1
   useEffect(() => {
-    if (paisesImpacto.length === 1 && paisesImpacto[0].peso === 100) {
+    if (!acuerdoToEdit && paisesImpacto.length === 1 && paisesImpacto[0].peso === 100) {
       setPaisesImpacto([{ pais_id: paisId, peso: 100 }]);
     }
-  }, [paisId]);
+  }, [paisId, acuerdoToEdit]);
 
   const sumaImpacto = useMemo(() => {
     return paisesImpacto.reduce((acc, curr) => acc + (Number(curr.peso) || 0), 0);
@@ -157,22 +189,42 @@ export function FormularioAcuerdo({
   };
 
   // 7. Tipo de envío (Domicilio / Tienda)
-  const [tipoEnvio, setTipoEnvio] = useState<TipoEnvio>('domicilio');
-  const [costoEnvioUsd, setCostoEnvioUsd] = useState<number | ''>('');
-  const [cantidadEntregas, setCantidadEntregas] = useState<number>(1);
-  const [fechaEntregaEstimada, setFechaEntregaEstimada] = useState('');
-  const [cantidadRetiros, setCantidadRetiros] = useState<number>(1);
-  const [fechaRetiroEstimada, setFechaRetiroEstimada] = useState('');
+  const [tipoEnvio, setTipoEnvio] = useState<TipoEnvio>(
+    acuerdoToEdit?.tipo_envio || 'domicilio'
+  );
+  const [costoEnvioUsd, setCostoEnvioUsd] = useState<number | ''>(
+    acuerdoToEdit?.costo_envio_usd ?? ''
+  );
+  const [cantidadEntregas, setCantidadEntregas] = useState<number>(
+    acuerdoToEdit?.cantidad_entregas || 1
+  );
+  const [fechaEntregaEstimada, setFechaEntregaEstimada] = useState(
+    acuerdoToEdit?.fechas_entrega_estimadas || ''
+  );
+  const [cantidadRetiros, setCantidadRetiros] = useState<number>(
+    acuerdoToEdit?.cantidad_retiros || 1
+  );
+  const [fechaRetiroEstimada, setFechaRetiroEstimada] = useState(
+    acuerdoToEdit?.fechas_retiro_estimadas || ''
+  );
 
   // 8. Contrato Link & Archivo
-  const [contratoLink, setContratoLink] = useState('');
-  const [contratoArchivoUrl, setContratoArchivoUrl] = useState('');
+  const [contratoLink, setContratoLink] = useState(acuerdoToEdit?.contrato_link || '');
+  const [contratoArchivoUrl, setContratoArchivoUrl] = useState(
+    acuerdoToEdit?.contrato_archivo_url || ''
+  );
   const [uploadedFileName, setUploadedFileName] = useState('');
 
   // 9. Productos acordados
-  const [productosAcordados, setProductosAcordados] = useState<Array<{ sku: string; cantidad: number }>>([
-    { sku: productos[0]?.sku || '', cantidad: 1 },
-  ]);
+  const [productosAcordados, setProductosAcordados] = useState<Array<{ sku: string; cantidad: number }>>(() => {
+    if (acuerdoToEdit?.productos && acuerdoToEdit.productos.length > 0) {
+      return acuerdoToEdit.productos.map((p) => ({
+        sku: p.sku,
+        cantidad: p.cantidad_acordada,
+      }));
+    }
+    return [{ sku: productos[0]?.sku || '', cantidad: 1 }];
+  });
 
   const handleAddProducto = () => {
     const available = productos.find((p) => !productosAcordados.some((pa) => pa.sku === p.sku));
@@ -228,8 +280,9 @@ export function FormularioAcuerdo({
       if (otrosContenidos.youtube) otros.push('youtube');
       if (otrosContenidos.facebook) otros.push('facebook');
 
-      const acuerdoPayload: Omit<Acuerdo, 'id' | 'created_at'> = {
-        solicitante_id: currentUser.id,
+      const acuerdoPayload: Omit<Acuerdo, 'id' | 'created_at'> & { id?: number } = {
+        ...(acuerdoToEdit ? { id: acuerdoToEdit.id } : {}),
+        solicitante_id: acuerdoToEdit ? acuerdoToEdit.solicitante_id : currentUser.id,
         responsable_id: responsableId,
         pais_id: paisId,
         influencer: influencer.trim(),
@@ -254,11 +307,20 @@ export function FormularioAcuerdo({
         cantidad_entregas: tipoEnvio === 'domicilio' ? cantidadEntregas : null,
         fechas_entrega_estimadas: tipoEnvio === 'domicilio' && fechaEntregaEstimada ? fechaEntregaEstimada : null,
         paises_impacto: paisesImpacto.map((p) => ({ pais_id: p.pais_id, peso: p.peso })),
-        productos: productosAcordados.map((p) => ({
-          sku: p.sku,
-          cantidad_acordada: p.cantidad,
-          cantidad_restante: p.cantidad,
-        })),
+        productos: productosAcordados.map((p) => {
+          const prevProd = acuerdoToEdit?.productos?.find((ep) => ep.sku === p.sku);
+          // Preserve remaining calculation if modifying
+          let restante = p.cantidad;
+          if (prevProd) {
+            const yaDespachado = (prevProd.cantidad_acordada || 0) - (prevProd.cantidad_restante ?? prevProd.cantidad_acordada);
+            restante = Math.max(0, p.cantidad - yaDespachado);
+          }
+          return {
+            sku: p.sku,
+            cantidad_acordada: p.cantidad,
+            cantidad_restante: restante,
+          };
+        }),
         otros_contenidos: otros,
       };
 
@@ -273,17 +335,39 @@ export function FormularioAcuerdo({
   return (
     <div className="max-w-5xl mx-auto space-y-6 pb-12">
       {/* Header bar */}
-      <div className="flex items-center justify-between">
-        <button
-          type="button"
-          onClick={onCancel}
-          className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#4A4F57] hover:text-[#1F2226] bg-white border border-[#E7E7EA] hover:bg-[#F4F4F6] px-3 py-1.5 rounded-xl shadow-2xs transition"
-        >
-          <ArrowLeft className="w-3.5 h-3.5" />
-          Volver a la lista
-        </button>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#4A4F57] hover:text-[#1F2226] bg-white border border-[#E7E7EA] hover:bg-[#F4F4F6] px-3 py-1.5 rounded-xl shadow-2xs transition cursor-pointer"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            Volver a la lista
+          </button>
+          <div className="border-l border-[#E7E7EA] pl-3">
+            <h2 className="text-sm font-bold text-[#1F2226]">
+              {acuerdoToEdit ? `Modificar Acuerdo #${acuerdoToEdit.id}` : 'Nuevo Acuerdo'}
+            </h2>
+            <p className="text-[11px] text-[#8A8F98]">
+              {acuerdoToEdit ? `Modificando acuerdo con ${acuerdoToEdit.influencer}` : 'Formulario 1 - Alta de contrato / canje con influencer'}
+            </p>
+          </div>
+        </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2.5">
+          {onOpenImport && !acuerdoToEdit && (
+            <button
+              type="button"
+              onClick={onOpenImport}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-[#E7E7EA] text-xs font-bold rounded-xl shadow-2xs transition cursor-pointer"
+              title="Descargar plantilla y cargar acuerdos desde Excel o CSV"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 text-[#F15A24]" />
+              <span>Importar Excel / CSV</span>
+            </button>
+          )}
+
           <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-[#FFF2ED] text-[#F15A24]">
             Formulario 1
           </span>
@@ -1061,7 +1145,13 @@ export function FormularioAcuerdo({
             className="inline-flex items-center gap-2 px-6 py-2.5 text-xs font-bold text-white bg-[#F15A24] hover:bg-[#D94815] rounded-xl shadow-2xs transition disabled:opacity-50"
           >
             <Save className="w-4 h-4" />
-            <span>{isSubmitting ? 'Guardando Acuerdo...' : 'Guardar Acuerdo (Generar ID)'}</span>
+            <span>
+              {isSubmitting
+                ? 'Guardando Acuerdo...'
+                : acuerdoToEdit
+                ? 'Guardar Modificaciones'
+                : 'Guardar Acuerdo (Generar ID)'}
+            </span>
           </button>
         </div>
       </form>

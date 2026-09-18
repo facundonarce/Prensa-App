@@ -15,9 +15,13 @@ import {
   Truck,
   Store,
   ChevronRight,
+  FileSpreadsheet,
+  Pencil,
+  Trash2,
+  ShoppingBag,
+  BarChart2,
 } from 'lucide-react';
 import { Acuerdo, Pais, TipoContrato, Usuario } from '../types';
-import { ShoppingBag, BarChart2 } from 'lucide-react';
 
 interface AcuerdosListProps {
   acuerdos: Acuerdo[];
@@ -26,9 +30,12 @@ interface AcuerdosListProps {
   usuarios: Usuario[];
   currentUser: Usuario | null;
   onOpenNuevoAcuerdo: () => void;
+  onOpenImport?: () => void;
   onSelectAcuerdo?: (acuerdo: Acuerdo) => void;
   onCrearPedido?: (acuerdoId: number) => void;
   onCrearReporte?: (acuerdoId: number) => void;
+  onEditAcuerdo?: (acuerdo: Acuerdo) => void;
+  onDeleteAcuerdo?: (id: number) => Promise<void>;
 }
 
 export function AcuerdosList({
@@ -38,14 +45,19 @@ export function AcuerdosList({
   usuarios,
   currentUser,
   onOpenNuevoAcuerdo,
+  onOpenImport,
   onSelectAcuerdo,
   onCrearPedido,
   onCrearReporte,
+  onEditAcuerdo,
+  onDeleteAcuerdo,
 }: AcuerdosListProps) {
   const [search, setSearch] = useState('');
   const [filtroPais, setFiltroPais] = useState<string>('todos');
   const [filtroTipo, setFiltroTipo] = useState<string>('todos');
   const [selectedDetail, setSelectedDetail] = useState<Acuerdo | null>(null);
+  const [acuerdoToDelete, setAcuerdoToDelete] = useState<Acuerdo | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const isAnalista = currentUser?.rol === 'analista';
 
@@ -144,14 +156,28 @@ export function AcuerdosList({
           </div>
         </div>
 
-        {/* Action Button */}
-        <button
-          onClick={onOpenNuevoAcuerdo}
-          className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-[#F15A24] hover:bg-[#D94815] text-white text-xs font-bold rounded-xl shadow-2xs transition shrink-0"
-        >
-          <Plus className="w-4 h-4" />
-          <span>+ Nuevo Acuerdo (Formulario 1)</span>
-        </button>
+        {/* Action Buttons */}
+        <div className="flex items-center gap-2 shrink-0">
+          {onOpenImport && (
+            <button
+              type="button"
+              onClick={onOpenImport}
+              className="inline-flex items-center justify-center gap-2 px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-[#E7E7EA] text-xs font-bold rounded-xl shadow-2xs transition cursor-pointer"
+              title="Descargar modelo y cargar acuerdos desde Excel o CSV"
+            >
+              <FileSpreadsheet className="w-4 h-4 text-[#F15A24]" />
+              <span>Importar Excel / CSV</span>
+            </button>
+          )}
+
+          <button
+            onClick={onOpenNuevoAcuerdo}
+            className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-[#F15A24] hover:bg-[#D94815] text-white text-xs font-bold rounded-xl shadow-2xs transition cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            <span>+ Nuevo Acuerdo (Formulario 1)</span>
+          </button>
+        </div>
       </div>
 
       {/* Main Data Table */}
@@ -305,13 +331,39 @@ export function AcuerdosList({
                     </td>
 
                     <td className="py-3 px-4 text-center">
-                      <button
-                        onClick={() => setSelectedDetail(a)}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-[#4A4F57] hover:text-[#1F2226] hover:bg-[#F4F4F6] border border-[#E7E7EA] rounded-lg transition"
-                      >
-                        <span>Detalle</span>
-                        <ChevronRight className="w-3 h-3" />
-                      </button>
+                      <div className="inline-flex items-center gap-1 justify-center">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedDetail(a)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-[#4A4F57] hover:text-[#1F2226] hover:bg-[#F4F4F6] border border-[#E7E7EA] rounded-lg transition cursor-pointer"
+                          title="Ver detalle del acuerdo"
+                        >
+                          <span>Detalle</span>
+                          <ChevronRight className="w-3 h-3" />
+                        </button>
+
+                        {onEditAcuerdo && (
+                          <button
+                            type="button"
+                            onClick={() => onEditAcuerdo(a)}
+                            className="p-1.5 text-[#4A4F57] hover:text-[#F15A24] hover:bg-[#FFF2ED] rounded-lg transition cursor-pointer"
+                            title="Modificar acuerdo"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+
+                        {onDeleteAcuerdo && (
+                          <button
+                            type="button"
+                            onClick={() => setAcuerdoToDelete(a)}
+                            className="p-1.5 text-[#8A8F98] hover:text-[#EF4444] hover:bg-[#FEF2F2] rounded-lg transition cursor-pointer"
+                            title="Eliminar acuerdo"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -430,9 +482,9 @@ export function AcuerdosList({
               </div>
             </div>
 
-            {/* Quick Actions for Pedidos and Reportes */}
+            {/* Quick Actions for Pedidos, Reportes, Modificar, Eliminar */}
             <div className="pt-3 border-t border-[#E7E7EA] flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 {onCrearPedido && (
                   <button
                     type="button"
@@ -441,7 +493,7 @@ export function AcuerdosList({
                       setSelectedDetail(null);
                       onCrearPedido(id);
                     }}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-[#F15A24] bg-[#FFF2ED] hover:bg-[#FFE5DB] border border-[#FED7AA] rounded-xl transition"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-[#F15A24] bg-[#FFF2ED] hover:bg-[#FFE5DB] border border-[#FED7AA] rounded-xl transition cursor-pointer"
                   >
                     <ShoppingBag className="w-3.5 h-3.5" />
                     <span>Despachar (Formulario 2)</span>
@@ -455,10 +507,38 @@ export function AcuerdosList({
                       setSelectedDetail(null);
                       onCrearReporte(id);
                     }}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-[#1F2226] bg-[#F4F4F6] hover:bg-[#E7E7EA] border border-[#E7E7EA] rounded-xl transition"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-[#1F2226] bg-[#F4F4F6] hover:bg-[#E7E7EA] border border-[#E7E7EA] rounded-xl transition cursor-pointer"
                   >
                     <BarChart2 className="w-3.5 h-3.5" />
                     <span>Cargar Reporte (Formulario 3)</span>
+                  </button>
+                )}
+                {onEditAcuerdo && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const item = selectedDetail;
+                      setSelectedDetail(null);
+                      onEditAcuerdo(item);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-[#4A4F57] hover:text-[#F15A24] bg-white hover:bg-[#FFF2ED] border border-[#E7E7EA] rounded-xl transition cursor-pointer"
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                    <span>Modificar</span>
+                  </button>
+                )}
+                {onDeleteAcuerdo && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const item = selectedDetail;
+                      setSelectedDetail(null);
+                      setAcuerdoToDelete(item);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-[#EF4444] bg-[#FEF2F2] hover:bg-[#FEE2E2] border border-[#FECACA] rounded-xl transition cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Eliminar</span>
                   </button>
                 )}
               </div>
@@ -466,9 +546,61 @@ export function AcuerdosList({
               <button
                 type="button"
                 onClick={() => setSelectedDetail(null)}
-                className="px-4 py-1.5 text-xs font-semibold text-[#4A4F57] hover:text-[#1F2226] bg-white border border-[#E7E7EA] rounded-xl transition"
+                className="px-4 py-1.5 text-xs font-semibold text-[#4A4F57] hover:text-[#1F2226] bg-white border border-[#E7E7EA] rounded-xl transition cursor-pointer"
               >
                 Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation Dialog for Deleting Acuerdo */}
+      {acuerdoToDelete && (
+        <div className="fixed inset-0 z-50 bg-[#1F2226]/40 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-[#E7E7EA] shadow-xl max-w-md w-full p-6 space-y-4">
+            <div className="flex items-center gap-3 text-[#EF4444]">
+              <div className="w-10 h-10 rounded-full bg-[#FEF2F2] border border-[#FECACA] flex items-center justify-center shrink-0">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-[#1F2226]">¿Eliminar Acuerdo #{acuerdoToDelete.id}?</h3>
+                <p className="text-xs text-[#8A8F98]">Influencer: {acuerdoToDelete.influencer}</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-[#4A4F57] leading-relaxed">
+              ¿Estás seguro de que deseas eliminar este acuerdo? Se eliminarán de forma permanente los registros y productos acordados vinculados.
+            </p>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#E7E7EA]">
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={() => setAcuerdoToDelete(null)}
+                className="px-4 py-2 text-xs font-semibold text-[#4A4F57] hover:bg-[#F4F4F6] rounded-xl transition cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={async () => {
+                  if (!onDeleteAcuerdo || !acuerdoToDelete) return;
+                  try {
+                    setIsDeleting(true);
+                    await onDeleteAcuerdo(acuerdoToDelete.id);
+                    setAcuerdoToDelete(null);
+                  } catch (err: any) {
+                    alert(err?.message || 'Error al eliminar el acuerdo');
+                  } finally {
+                    setIsDeleting(false);
+                  }
+                }}
+                className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-[#EF4444] hover:bg-[#DC2626] rounded-xl shadow-2xs transition disabled:opacity-50 cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>{isDeleting ? 'Eliminando...' : 'Sí, eliminar acuerdo'}</span>
               </button>
             </div>
           </div>

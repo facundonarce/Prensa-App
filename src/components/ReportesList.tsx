@@ -16,6 +16,8 @@ import {
   Tv,
   FileText,
   Package,
+  FileSpreadsheet,
+  Pencil,
 } from 'lucide-react';
 import { Reporte, Acuerdo, Medio, RedSocial, TipoPublicacion, Producto, Usuario } from '../types';
 
@@ -29,7 +31,9 @@ interface ReportesListProps {
   usuarios: Usuario[];
   currentUser: Usuario;
   onNewReporte: () => void;
+  onOpenImport?: () => void;
   onDeleteReporte: (id: number) => Promise<void>;
+  onEditReporte?: (reporte: Reporte) => void;
 }
 
 export function ReportesList({
@@ -42,11 +46,15 @@ export function ReportesList({
   usuarios,
   currentUser,
   onNewReporte,
+  onOpenImport,
   onDeleteReporte,
+  onEditReporte,
 }: ReportesListProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterMedio, setFilterMedio] = useState<string>('all');
   const [selectedReporte, setSelectedReporte] = useState<Reporte | null>(null);
+  const [reporteToDelete, setReporteToDelete] = useState<Reporte | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Filtered list
   const filteredReportes = useMemo(() => {
@@ -117,14 +125,28 @@ export function ReportesList({
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={onNewReporte}
-          className="inline-flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold text-white bg-[#F15A24] hover:bg-[#D94815] rounded-xl transition shadow-xs self-start sm:self-auto"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Nuevo Reporte (Formulario 3)</span>
-        </button>
+        <div className="flex items-center gap-2 self-start sm:self-auto">
+          {onOpenImport && (
+            <button
+              type="button"
+              onClick={onOpenImport}
+              className="inline-flex items-center justify-center gap-2 px-3.5 py-2.5 text-xs font-bold text-slate-700 bg-white hover:bg-slate-50 border border-[#E7E7EA] rounded-xl transition shadow-2xs cursor-pointer"
+              title="Descargar modelo y cargar reportes desde Excel o CSV"
+            >
+              <FileSpreadsheet className="w-4 h-4 text-[#F15A24]" />
+              <span>Importar Excel / CSV</span>
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={onNewReporte}
+            className="inline-flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold text-white bg-[#F15A24] hover:bg-[#D94815] rounded-xl transition shadow-xs cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Nuevo Reporte (Formulario 3)</span>
+          </button>
+        </div>
       </div>
 
       {/* KPI Cards */}
@@ -335,17 +357,25 @@ export function ReportesList({
                         </div>
                       </td>
                       <td className="py-3 px-4 text-right">
-                        <div className="inline-flex items-center gap-1">
-                          {currentUser.rol === 'admin_general' && (
+                        <div className="inline-flex items-center gap-1 justify-end">
+                          {onEditReporte && (
                             <button
                               type="button"
-                              onClick={() => handleDelete(rep.id)}
-                              className="p-1.5 text-[#8A8F98] hover:text-[#EF4444] hover:bg-[#FEF2F2] rounded-lg transition"
-                              title="Eliminar reporte (solo admin_general)"
+                              onClick={() => onEditReporte(rep)}
+                              className="p-1.5 text-[#4A4F57] hover:text-[#F15A24] hover:bg-[#FFF2ED] rounded-lg transition cursor-pointer"
+                              title="Modificar reporte"
                             >
-                              <Trash2 className="w-4 h-4" />
+                              <Pencil className="w-4 h-4" />
                             </button>
                           )}
+                          <button
+                            type="button"
+                            onClick={() => setReporteToDelete(rep)}
+                            className="p-1.5 text-[#8A8F98] hover:text-[#EF4444] hover:bg-[#FEF2F2] rounded-lg transition cursor-pointer"
+                            title="Eliminar reporte"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -356,6 +386,58 @@ export function ReportesList({
           </table>
         </div>
       </div>
+
+      {/* Confirmation Dialog for Deleting Reporte */}
+      {reporteToDelete && (
+        <div className="fixed inset-0 z-50 bg-[#1F2226]/40 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-[#E7E7EA] shadow-xl max-w-md w-full p-6 space-y-4">
+            <div className="flex items-center gap-3 text-[#EF4444]">
+              <div className="w-10 h-10 rounded-full bg-[#FEF2F2] border border-[#FECACA] flex items-center justify-center shrink-0">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-[#1F2226]">¿Eliminar Reporte #{reporteToDelete.id}?</h3>
+                <p className="text-xs text-[#8A8F98]">Acuerdo vinculado: #{reporteToDelete.acuerdo_id}</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-[#4A4F57] leading-relaxed">
+              ¿Estás seguro de que deseas eliminar este reporte de contenido? Esta acción borrará el registro de métricas y productos reportados.
+            </p>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#E7E7EA]">
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={() => setReporteToDelete(null)}
+                className="px-4 py-2 text-xs font-semibold text-[#4A4F57] hover:bg-[#F4F4F6] rounded-xl transition cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={async () => {
+                  if (!reporteToDelete) return;
+                  try {
+                    setIsDeleting(true);
+                    await onDeleteReporte(reporteToDelete.id);
+                    setReporteToDelete(null);
+                  } catch (err: any) {
+                    alert(err?.message || 'Error al eliminar el reporte');
+                  } finally {
+                    setIsDeleting(false);
+                  }
+                }}
+                className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-[#EF4444] hover:bg-[#DC2626] rounded-xl shadow-2xs transition disabled:opacity-50 cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>{isDeleting ? 'Eliminando...' : 'Sí, eliminar reporte'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

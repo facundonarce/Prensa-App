@@ -1,7 +1,9 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { Header } from './components/Header';
 import { ConfigModal } from './components/ConfigModal';
+import { FormImportModal } from './components/FormImportModal';
+import { FormType, ValidationContext } from './lib/formsExcelService';
 import { AdminUsuarios } from './components/AdminUsuarios';
 import { AdminValidacion } from './components/AdminValidacion';
 import { AcuerdosList } from './components/AcuerdosList';
@@ -62,12 +64,21 @@ export default function App() {
   // Navigation
   const [activeModule, setActiveModule] = useState('acuerdos');
   const [isCreatingAcuerdo, setIsCreatingAcuerdo] = useState(false);
+  const [editingAcuerdo, setEditingAcuerdo] = useState<Acuerdo | null>(null);
   const [isCreatingPedido, setIsCreatingPedido] = useState(false);
+  const [editingPedido, setEditingPedido] = useState<Pedido | null>(null);
+  const [pedidoInitialAcuerdoId, setPedidoInitialAcuerdoId] = useState<number | undefined>(undefined);
   const [isCreatingReporte, setIsCreatingReporte] = useState(false);
+  const [editingReporte, setEditingReporte] = useState<Reporte | null>(null);
+  const [reporteInitialAcuerdoId, setReporteInitialAcuerdoId] = useState<number | undefined>(undefined);
 
   // Config & Modal
   const [isConfigOpen, setIsConfigOpen] = useState(false);
   const [hasConfig, setHasConfig] = useState(false);
+
+  // Form Import Modal (Formulario 1, 2, 3)
+  const [isFormImportOpen, setIsFormImportOpen] = useState(false);
+  const [formImportType, setFormImportType] = useState<FormType>('acuerdos');
 
   // Auth & Roles
   const [currentUser, setCurrentUser] = useState<Usuario | null>(null);
@@ -362,14 +373,28 @@ export default function App() {
     }
   };
 
-  const handleSaveAcuerdo = async (acuerdoData: Omit<Acuerdo, 'id' | 'created_at'>) => {
+  const handleSaveAcuerdo = async (acuerdoData: Omit<Acuerdo, 'id' | 'created_at'> & { id?: number }) => {
     const saved = await DataService.saveAcuerdo(acuerdoData);
-    setAcuerdos((prev) => [saved, ...prev.filter((a) => a.id !== saved.id)]);
+    const updatedAcuerdos = await DataService.getAcuerdos();
+    setAcuerdos(updatedAcuerdos);
     setIsCreatingAcuerdo(false);
+    setEditingAcuerdo(null);
     return saved;
   };
 
-  const handleSavePedido = async (pedidoData: Omit<Pedido, 'id' | 'created_at'>) => {
+  const handleDeleteAcuerdo = async (id: number) => {
+    await DataService.deleteAcuerdo(id);
+    const [updatedAcuerdos, updatedPedidos, updatedReportes] = await Promise.all([
+      DataService.getAcuerdos(),
+      DataService.getPedidos(),
+      DataService.getReportes(),
+    ]);
+    setAcuerdos(updatedAcuerdos);
+    setPedidos(updatedPedidos);
+    setReportes(updatedReportes);
+  };
+
+  const handleSavePedido = async (pedidoData: Omit<Pedido, 'id' | 'created_at'> & { id?: number }) => {
     await DataService.savePedido(pedidoData);
     const [updatedPedidos, updatedAcuerdos] = await Promise.all([
       DataService.getPedidos(),
@@ -378,6 +403,8 @@ export default function App() {
     setPedidos(updatedPedidos);
     setAcuerdos(updatedAcuerdos);
     setIsCreatingPedido(false);
+    setEditingPedido(null);
+    setPedidoInitialAcuerdoId(undefined);
   };
 
   const handleDeletePedido = async (id: number) => {
@@ -390,17 +417,65 @@ export default function App() {
     setAcuerdos(updatedAcuerdos);
   };
 
-  const handleSaveReporte = async (reporteData: Omit<Reporte, 'id' | 'created_at'>) => {
+  const handleSaveReporte = async (reporteData: Omit<Reporte, 'id' | 'created_at'> & { id?: number }) => {
     await DataService.saveReporte(reporteData);
     const updated = await DataService.getReportes();
     setReportes(updated);
     setIsCreatingReporte(false);
+    setEditingReporte(null);
+    setReporteInitialAcuerdoId(undefined);
   };
 
   const handleDeleteReporte = async (id: number) => {
     await DataService.deleteReporte(id);
     const updated = await DataService.getReportes();
     setReportes(updated);
+  };
+
+  // Validation context for Excel / CSV Form Imports
+  const validationContext: ValidationContext = useMemo(() => ({
+    paises,
+    productos,
+    tiendas,
+    medios,
+    redes,
+    tiposPub,
+    tiposContrato,
+    usuarios,
+    acuerdos,
+    currentUser: currentUser || {
+      id: 'admin-prensa',
+      email: 'admin@carestino.com',
+      nombre: 'Administrador Carestino',
+      rol: 'admin_general',
+      activo: true,
+    },
+  }), [paises, productos, tiendas, medios, redes, tiposPub, tiposContrato, usuarios, acuerdos, currentUser]);
+
+  const handleConfirmFormImport = async (items: any[]) => {
+    if (formImportType === 'acuerdos') {
+      for (const item of items) {
+        await DataService.saveAcuerdo(item);
+      }
+      const updated = await DataService.getAcuerdos();
+      setAcuerdos(updated);
+    } else if (formImportType === 'pedidos') {
+      for (const item of items) {
+        await DataService.savePedido(item);
+      }
+      const [updatedPedidos, updatedAcuerdos] = await Promise.all([
+        DataService.getPedidos(),
+        DataService.getAcuerdos(),
+      ]);
+      setPedidos(updatedPedidos);
+      setAcuerdos(updatedAcuerdos);
+    } else if (formImportType === 'reportes') {
+      for (const item of items) {
+        await DataService.saveReporte(item);
+      }
+      const updated = await DataService.getReportes();
+      setReportes(updated);
+    }
   };
 
   // URL Copy Helper for callback
@@ -510,7 +585,7 @@ export default function App() {
           {/* Module: Acuerdos */}
           {activeModule === 'acuerdos' && (
                 <>
-                  {isCreatingAcuerdo ? (
+                  {isCreatingAcuerdo || editingAcuerdo ? (
                     <FormularioAcuerdo
                       currentUser={currentUser!}
                       usuariosHabilitados={usuarios.filter((u) => u.activo !== false)}
@@ -519,8 +594,16 @@ export default function App() {
                       tiendas={tiendas}
                       tiposContrato={tiposContrato}
                       escalones={escalones}
+                      acuerdoToEdit={editingAcuerdo}
                       onSave={handleSaveAcuerdo}
-                      onCancel={() => setIsCreatingAcuerdo(false)}
+                      onCancel={() => {
+                        setIsCreatingAcuerdo(false);
+                        setEditingAcuerdo(null);
+                      }}
+                      onOpenImport={() => {
+                        setFormImportType('acuerdos');
+                        setIsFormImportOpen(true);
+                      }}
                     />
                   ) : (
                     <AcuerdosList
@@ -529,13 +612,28 @@ export default function App() {
                       tiposContrato={tiposContrato}
                       usuarios={usuarios}
                       currentUser={currentUser}
-                      onOpenNuevoAcuerdo={() => setIsCreatingAcuerdo(true)}
+                      onOpenNuevoAcuerdo={() => {
+                        setEditingAcuerdo(null);
+                        setIsCreatingAcuerdo(true);
+                      }}
+                      onEditAcuerdo={(acuerdo) => {
+                        setEditingAcuerdo(acuerdo);
+                      }}
+                      onDeleteAcuerdo={handleDeleteAcuerdo}
+                      onOpenImport={() => {
+                        setFormImportType('acuerdos');
+                        setIsFormImportOpen(true);
+                      }}
                       onCrearPedido={(acuerdoId) => {
                         setActiveModule('pedidos');
+                        setEditingPedido(null);
+                        setPedidoInitialAcuerdoId(acuerdoId);
                         setIsCreatingPedido(true);
                       }}
                       onCrearReporte={(acuerdoId) => {
                         setActiveModule('reportes');
+                        setEditingReporte(null);
+                        setReporteInitialAcuerdoId(acuerdoId);
                         setIsCreatingReporte(true);
                       }}
                     />
@@ -574,15 +672,21 @@ export default function App() {
 
               {/* Module: Pedidos (Formulario 2) */}
               {activeModule === 'pedidos' && (
-                isCreatingPedido ? (
+                isCreatingPedido || editingPedido ? (
                   <FormularioPedido
                     acuerdos={acuerdos}
                     productos={productos}
                     tiendas={tiendas}
                     usuarios={usuarios}
                     currentUser={currentUser!}
+                    initialAcuerdoId={pedidoInitialAcuerdoId}
+                    pedidoToEdit={editingPedido}
                     onSavePedido={handleSavePedido}
-                    onCancel={() => setIsCreatingPedido(false)}
+                    onCancel={() => {
+                      setIsCreatingPedido(false);
+                      setEditingPedido(null);
+                      setPedidoInitialAcuerdoId(undefined);
+                    }}
                   />
                 ) : (
                   <PedidosList
@@ -592,7 +696,18 @@ export default function App() {
                     tiendas={tiendas}
                     usuarios={usuarios}
                     currentUser={currentUser!}
-                    onNewPedido={() => setIsCreatingPedido(true)}
+                    onNewPedido={() => {
+                      setEditingPedido(null);
+                      setPedidoInitialAcuerdoId(undefined);
+                      setIsCreatingPedido(true);
+                    }}
+                    onEditPedido={(pedido) => {
+                      setEditingPedido(pedido);
+                    }}
+                    onOpenImport={() => {
+                      setFormImportType('pedidos');
+                      setIsFormImportOpen(true);
+                    }}
                     onDeletePedido={handleDeletePedido}
                   />
                 )
@@ -600,7 +715,7 @@ export default function App() {
 
               {/* Module: Reportes de Contenido (Formulario 3) */}
               {activeModule === 'reportes' && (
-                isCreatingReporte ? (
+                isCreatingReporte || editingReporte ? (
                   <FormularioReporte
                     acuerdos={acuerdos}
                     medios={medios}
@@ -609,8 +724,14 @@ export default function App() {
                     productos={productos}
                     usuarios={usuarios}
                     currentUser={currentUser!}
+                    initialAcuerdoId={reporteInitialAcuerdoId}
+                    reporteToEdit={editingReporte}
                     onSaveReporte={handleSaveReporte}
-                    onCancel={() => setIsCreatingReporte(false)}
+                    onCancel={() => {
+                      setIsCreatingReporte(false);
+                      setEditingReporte(null);
+                      setReporteInitialAcuerdoId(undefined);
+                    }}
                   />
                 ) : (
                   <ReportesList
@@ -622,7 +743,18 @@ export default function App() {
                     productos={productos}
                     usuarios={usuarios}
                     currentUser={currentUser!}
-                    onNewReporte={() => setIsCreatingReporte(true)}
+                    onNewReporte={() => {
+                      setEditingReporte(null);
+                      setReporteInitialAcuerdoId(undefined);
+                      setIsCreatingReporte(true);
+                    }}
+                    onEditReporte={(reporte) => {
+                      setEditingReporte(reporte);
+                    }}
+                    onOpenImport={() => {
+                      setFormImportType('reportes');
+                      setIsFormImportOpen(true);
+                    }}
                     onDeleteReporte={handleDeleteReporte}
                   />
                 )
@@ -718,6 +850,15 @@ export default function App() {
           refreshConfigStatus();
           loadData();
         }}
+      />
+
+      {/* Form Import Modal (Excel / CSV for Formulario 1, 2, 3) */}
+      <FormImportModal
+        isOpen={isFormImportOpen}
+        onClose={() => setIsFormImportOpen(false)}
+        formType={formImportType}
+        context={validationContext}
+        onConfirmImport={handleConfirmFormImport}
       />
     </div>
   );
